@@ -106,16 +106,19 @@ class AutomationTab:
         )
 
         # --- Step 2: Create the labeled PDF ---
-        roc_text = self.app.company_new_roc.get() or self.app.company_old_roc.get()
+        old_roc = self.app.company_old_roc.get()
+        new_roc = self.app.company_new_roc.get()
+        roc_text = f"{new_roc}/{old_roc}"
         pdf_filename = os.path.basename(self.app.uploaded_pdf_path)
-        output_path = os.path.join(self.app.output_dir_path, pdf_filename)
+        output_folder = self.app.export_dir_var.get()
+        os.makedirs(output_folder, exist_ok=True)
+        output_path = os.path.join(output_folder, pdf_filename)
 
         success = pdf_processor.add_labels_to_pdf(
             source_path=self.app.uploaded_pdf_path,
             output_path=output_path,
             unique_id=self.app.adjudikasi_id.get(),
-            roc_text=f"ROC: {roc_text}",
-            custom_text="For LHDN Stamping",
+            roc_text=roc_text,
         )
         if not success:
             messagebox.showerror(

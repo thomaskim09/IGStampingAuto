@@ -39,31 +39,25 @@ def extract_info_from_pdf(pdf_path):
         return {}
 
 
-def add_labels_to_pdf(
-    source_path, output_path, unique_id, roc_text, custom_text="For LHDN"
-):
+def add_labels_to_pdf(source_path, output_path, unique_id, roc_text):
     """
-    Adds three labels to the top of the first page of a PDF document.
+    Adds two labels to the top of the first page of a PDF document.
 
     Args:
         source_path (str): The path to the original PDF.
         output_path (str): The path to save the modified PDF.
         unique_id (str): The ID from the website, to be placed in the center.
-        roc_text (str): The ROC number, to be placed on the right.
-        custom_text (str): Custom text for the left side.
+        roc_text (str): The combined ROC numbers, to be placed on the right.
     """
     try:
         doc = fitz.open(source_path)
         page = doc[0]  # Work on the first page
 
         # --- Define styles and positions ---
-        top_margin = 40  # How far from the top to insert text
+        top_margin = 20  # How far from the top to insert text (moved up)
         side_margin = 30  # How far from the sides
-        font_size = 9
-        text_color = (1, 0, 0)  # Red color
-
-        # Position for Top Left Text (Custom Text)
-        pos_left = fitz.Point(side_margin, top_margin)
+        font_size = 10
+        text_color = (0, 0, 0)  # Black color
 
         # Position for Top Right Text (ROC)
         # We calculate the width of the text to align it properly from the right
@@ -78,10 +72,7 @@ def add_labels_to_pdf(
         )
         pos_center = fitz.Point(page.rect.width / 2 - id_text_len / 2, top_margin)
 
-        # --- Insert the text ---
-        page.insert_text(
-            pos_left, custom_text, fontsize=font_size, fontname="helv", color=text_color
-        )
+        # --- Insert the text (removed left-side custom text) ---
         page.insert_text(
             pos_center, unique_id, fontsize=font_size, fontname="helv", color=text_color
         )

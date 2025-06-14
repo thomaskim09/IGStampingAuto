@@ -1,10 +1,12 @@
 # ui_company_tab.py
 
+import platform
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import os
 import subprocess
 from PIL import Image, ImageTk
+from selenium import webdriver
 
 # Local module imports
 import database
@@ -66,13 +68,22 @@ class CompanyTab:
             row=2, column=2, sticky="e", padx=5, pady=5
         )
 
+        ttk.Label(search_frame, text="Adjudication Number:").grid(
+            row=3, column=0, sticky="w", padx=5, pady=5
+        )
+        ttk.Entry(search_frame, textvariable=self.app.adjudikasi_id).grid(
+            row=3, column=1, sticky="ew", padx=5, pady=5
+        )
+
+        ttk.Button(
+            search_frame, text="Generate Labeled PDF", command=self.add_remark_to_pdf
+        ).grid(row=3, column=2, sticky="e", padx=5, pady=5)
+
         # --- Company Details Form Frame ---
         form_frame = ttk.LabelFrame(main_frame, text="Company Details", padding=15)
         form_frame.pack(fill="x", expand=True, side="top", padx=5, pady=5)
         form_frame.columnconfigure(1, weight=1)
 
-        # --- RE-ORDERED WIDGETS TO MATCH THE IMAGE ---
-        # Row 0: Company Name
         ttk.Label(form_frame, text="Company Name:").grid(
             row=0, column=0, sticky="w", padx=5, pady=5
         )
@@ -80,7 +91,6 @@ class CompanyTab:
             row=0, column=1, sticky="ew", padx=5, pady=5
         )
 
-        # Row 1-3: Address Lines
         ttk.Label(form_frame, text="Address 1:").grid(
             row=1, column=0, sticky="w", padx=5, pady=5
         )
@@ -102,7 +112,6 @@ class CompanyTab:
             row=3, column=1, sticky="ew", padx=5, pady=5
         )
 
-        # Row 4: Postcode
         ttk.Label(form_frame, text="Postcode:").grid(
             row=4, column=0, sticky="w", padx=5, pady=5
         )
@@ -110,7 +119,6 @@ class CompanyTab:
             row=4, column=1, sticky="ew", padx=5, pady=5
         )
 
-        # Row 5: City
         ttk.Label(form_frame, text="City:").grid(
             row=5, column=0, sticky="w", padx=5, pady=5
         )
@@ -118,7 +126,6 @@ class CompanyTab:
             row=5, column=1, sticky="ew", padx=5, pady=5
         )
 
-        # Row 6: State
         ttk.Label(form_frame, text="State:").grid(
             row=6, column=0, sticky="w", padx=5, pady=5
         )
@@ -126,7 +133,6 @@ class CompanyTab:
             row=6, column=1, sticky="ew", padx=5, pady=5
         )
 
-        # Row 7: Old ROC
         ttk.Label(form_frame, text="Old ROC Number:").grid(
             row=7, column=0, sticky="w", padx=5, pady=5
         )
@@ -134,7 +140,6 @@ class CompanyTab:
             row=7, column=1, sticky="ew", padx=5, pady=5
         )
 
-        # Row 8: New ROC
         ttk.Label(form_frame, text="New ROC Number:").grid(
             row=8, column=0, sticky="w", padx=5, pady=5
         )
@@ -142,7 +147,6 @@ class CompanyTab:
             row=8, column=1, sticky="ew", padx=5, pady=5
         )
 
-        # Row 9: Telephone
         ttk.Label(form_frame, text="Telephone Number:").grid(
             row=9, column=0, sticky="w", padx=5, pady=5
         )
@@ -182,29 +186,44 @@ class CompanyTab:
     def show_startup_info_popup(self):
         image_path = os.path.join("resource", "startup_page.jpg")
         if not os.path.exists(image_path):
+            self.app.attributes("-topmost", 1)
             messagebox.showwarning(
                 "Image Not Found",
                 f"Could not find '{image_path}'.\nPlease make sure the screenshot exists in the 'resource' folder.",
             )
+            self.app.attributes("-topmost", 0)
             return
 
         popup = tk.Toplevel(self.app)
         popup.title("Chrome Prepared")
-        popup.geometry("600x450")
+
+        # --- Increased window and thumbnail size ---
+        popup.attributes("-topmost", True)
+        popup.geometry("800x600")
+
+        popup.update_idletasks()
+        width = popup.winfo_width()
+        height = popup.winfo_height()
+        x = (popup.winfo_screenwidth() // 2) - (width // 2)
+        y = (popup.winfo_screenheight() // 2) - (height // 2)
+        popup.geometry(f"{width}x{height}+{x}+{y}")
+
         img = Image.open(image_path)
-        img.thumbnail((580, 350))
+        img.thumbnail((780, 500))  # Increased thumbnail size
         photo = ImageTk.PhotoImage(img)
         img_label = ttk.Label(popup, image=photo)
         img_label.image = photo
         img_label.pack(pady=10)
+
         text_label = ttk.Label(
             popup,
             text="Please log in and navigate to the correct page in the new Chrome window.",
-            wraplength=580,
+            wraplength=780,
         )
         text_label.pack(pady=5)
         ok_button = ttk.Button(popup, text="OK", command=popup.destroy)
         ok_button.pack(pady=10)
+
         popup.transient(self.app)
         popup.grab_set()
         self.app.wait_window(popup)
@@ -222,13 +241,22 @@ class CompanyTab:
             subprocess.Popen(command)
             self.show_startup_info_popup()
 
-            chrome_options = automation.webdriver.chrome.options.Options()
+            # --- Import webdriver correctly ---
+            chrome_options = webdriver.ChromeOptions()
             chrome_options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
-            self.app.driver = automation.webdriver.Chrome(options=chrome_options)
+            self.app.driver = webdriver.Chrome(options=chrome_options)
             self.app.automation_instance = automation.StampsAutomation(self.app.driver)
+
+            # --- Bring messagebox to front ---
+            self.app.attributes("-topmost", 1)
             messagebox.showinfo("Success", "Successfully connected to Chrome.")
+            self.app.attributes("-topmost", 0)
+
         except Exception as e:
+            # --- Bring messagebox to front ---
+            self.app.attributes("-topmost", 1)
             messagebox.showerror("Error", f"Failed to prepare Chrome or connect: {e}")
+            self.app.attributes("-topmost", 0)
             self.app.driver = None
             self.app.automation_instance = None
 
@@ -256,6 +284,7 @@ class CompanyTab:
         self.app.source_pdf_var.set("")
         self.app.export_dir_var.set("")
         self.app.uploaded_pdf_path = None
+        self.app.adjudikasi_id.set("")
 
     def populate_company_form(self, event=None):
         selected_company = self.app.company_search_var.get()
@@ -283,9 +312,17 @@ class CompanyTab:
         )
         if not filepath:
             return
+
+        self.clear_company_form()
+
         self.app.uploaded_pdf_path = filepath
         self.app.source_pdf_var.set(filepath)
-        self.app.export_dir_var.set(self.app.output_dir_path)
+
+        # --- Create and set 'output_stamped' folder in the source PDF's directory ---
+        source_directory = os.path.dirname(filepath)
+        output_directory = os.path.join(source_directory, "output_stamped")
+        self.app.export_dir_var.set(output_directory)
+
         extracted_data = pdf_processor.extract_info_from_pdf(filepath)
         if not extracted_data or not extracted_data.get("name"):
             messagebox.showwarning(
@@ -293,19 +330,30 @@ class CompanyTab:
                 "Could not automatically find a company name in the PDF.",
             )
             return
+
         company_name_from_pdf = extracted_data.get("name")
-        db_match = database.get_company_by_name(company_name_from_pdf)
-        if db_match:
-            self.app.company_search_var.set(company_name_from_pdf)
-            self.populate_company_form()
-            messagebox.showinfo(
-                "Company Found", f"Found '{company_name_from_pdf}' in the database."
-            )
-        else:
+
+        # --- Smart company matching logic ---
+        first_word = company_name_from_pdf.split()[0].lower()
+        found_match = False
+        for company_name in self.app.all_company_names:
+            if company_name.lower().startswith(first_word):
+                # Found the first likely match
+                self.app.company_search_var.set(company_name)
+                self.populate_company_form()
+                messagebox.showinfo(
+                    "Company Matched",
+                    f"Found a likely match '{company_name}' in the database based on the PDF.",
+                )
+                found_match = True
+                break  # Stop after finding the first match
+
+        if not found_match:
+            # If no match is found after checking all names, treat as a new company
             self.app.company_name.set(company_name_from_pdf)
             messagebox.showinfo(
                 "New Company Detected",
-                "Extracted new company info from PDF. Please review and save the full address.",
+                "No close match found in the database. Extracted new company info from PDF. Please review and save the full address.",
             )
 
     def save_company(self):
@@ -340,3 +388,58 @@ class CompanyTab:
             self.clear_company_form()
             self.app.load_company_names_to_search()
             messagebox.showinfo("Success", f"Company '{name}' deleted successfully.")
+
+    def add_remark_to_pdf(self):
+        """
+        Manually triggers the PDF labeling process using data from the form.
+        """
+        source_pdf = self.app.uploaded_pdf_path
+        # --- Base directory is now the default output path ---
+        base_export_dir = self.app.output_dir_path
+        unique_id = self.app.adjudikasi_id.get()
+        old_roc = self.app.company_old_roc.get()
+        new_roc = self.app.company_new_roc.get()
+        roc_text = f"{new_roc}/{old_roc}"
+
+        if not all([source_pdf, base_export_dir, unique_id, old_roc, new_roc]):
+            messagebox.showerror(
+                "Missing Information",
+                "Please ensure a Source PDF is uploaded, an Export Directory is set, "
+                "and the Adjudication Number and both ROC number fields are filled.",
+            )
+            return
+
+        # --- Create a unique subfolder based on the ID ---
+        output_folder = self.app.export_dir_var.get()
+        os.makedirs(output_folder, exist_ok=True)
+
+        pdf_filename = os.path.basename(source_pdf)
+        output_path = os.path.join(output_folder, pdf_filename)
+
+        success = pdf_processor.add_labels_to_pdf(
+            source_path=source_pdf,
+            output_path=output_path,
+            unique_id=unique_id,
+            roc_text=roc_text,
+        )
+
+        if success:
+            messagebox.showinfo(
+                "PDF Generated",
+                f"Successfully generated labeled PDF at:\n{output_path}",
+            )
+            # --- Auto-open the PDF ---
+            try:
+                if platform.system() == "Windows":
+                    os.startfile(output_path)
+                elif platform.system() == "Darwin":  # macOS
+                    subprocess.Popen(["open", output_path])
+                else:  # Linux
+                    subprocess.Popen(["xdg-open", output_path])
+            except Exception as e:
+                messagebox.showerror(
+                    "Error Opening PDF",
+                    f"Failed to open the PDF automatically. Please open it manually from: {output_path}\nError: {e}",
+                )
+        else:
+            messagebox.showerror("PDF Generation Failed", "Could not label the PDF.")
