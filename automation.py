@@ -3,6 +3,7 @@
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select, WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException
 from datetime import datetime
 
 
@@ -85,34 +86,115 @@ class StampsAutomation:
 
         return adjudikasi_id
 
-    def run_phase_2_bahagian_a(self):
+    def run_phase_2_bahagian_a(self, company_data):
         """
-        Completes the 'Bahagian A' section of the form.
+        Completes the 'Bahagian A' section of the form using provided data.
         """
         print("--- Running Phase 2: Bahagian A ---")
         try:
-            # 1. Switch to the Bahagian A tab/section if necessary
-            # TODO: Find the locator for the 'Bahagian A' tab and click it.
-            bahagian_a_tab_locator = (By.XPATH, "//a[contains(text(), 'Bahagian A')]")
+            # 1. Switch to the Bahagian A tab
+            print("Switching to Bahagian A tab...")
+            bahagian_a_tab_locator = (By.XPATH, "//a[@href='#bhgn-a']")
             bahagian_a_tab = self.wait.until(
                 EC.element_to_be_clickable(bahagian_a_tab_locator)
             )
             bahagian_a_tab.click()
-            print("Switched to Bahagian A tab.")
 
-            # 2. Click the link to open the pop-up
-            # TODO: Find the locator for the "(Syarikat Berdaftar Dengan SSM)" link.
-            ssm_link_locator = (By.LINK_TEXT, "(Syarikat Berdaftar Dengan SSM)")
+            # 2. Click the link to open the company pop-up
+            print("Clicking 'Syarikat Berdaftar Dengan SSM' link...")
+            ssm_link_locator = (By.PARTIAL_LINK_TEXT, "Syarikat Berdaftar Dengan SSM")
             ssm_link = self.wait.until(EC.element_to_be_clickable(ssm_link_locator))
             ssm_link.click()
-            print("Clicked SSM link to open pop-up.")
 
-            # TODO: Add logic to switch to the pop-up window and fill the form.
-            # This will require using driver.window_handles, similar to previous examples.
-            print("Placeholder: Logic for pop-up form to be added here.")
+            # --- Handle the Pop-up (Facebox) ---
+            # Facebox often uses an iframe. We must switch to it first.
+            # If this fails, the popup might not be in an iframe.
+            try:
+                # TODO: Right-click in the popup and 'Inspect'. Look for an <iframe> tag.
+                # Get its 'id' or 'name' attribute and put it here.
+                iframe_locator = (By.TAG_NAME, "iframe")  # A common guess
+                self.wait.until(
+                    EC.frame_to_be_available_and_switch_to_it(iframe_locator)
+                )
+                print("Successfully switched to popup iframe.")
+            except TimeoutException:
+                print(
+                    "Could not find an iframe. Assuming popup is in the main document."
+                )
+
+            # 3. Fill Company Name
+            name_field_locator = (By.NAME, "tb_nama")
+            name_field = self.wait.until(
+                EC.visibility_of_element_located(name_field_locator)
+            )
+            name_field.send_keys(company_data.get("name", ""))
+
+            # 4. Select 'Sendirian Berhad'
+            jenis_dropdown = Select(
+                self.driver.find_element(By.NAME, "jenis_perniagaan")
+            )
+            jenis_dropdown.select_by_visible_text("Sendirian Berhad / Sdn Bhd")
+
+            # 5. Fill ROC numbers
+            self.driver.find_element(By.ID, "tb_roc").send_keys(
+                company_data.get("old_roc", "")
+            )
+            self.driver.find_element(By.ID, "tb_roc_new").send_keys(
+                company_data.get("new_roc", "")
+            )
+
+            # 6. Select 'Tempatan'
+            Select(
+                self.driver.find_element(By.NAME, "tb_syarikat")
+            ).select_by_visible_text("Tempatan")
+
+            # 7. Fill address fields
+            self.driver.find_element(By.NAME, "tb_alamat_1").send_keys(
+                company_data.get("address_1", "")
+            )
+            self.driver.find_element(By.NAME, "tb_alamat_2").send_keys(
+                company_data.get("address_2", "")
+            )
+            self.driver.find_element(By.NAME, "tb_alamat_3").send_keys(
+                company_data.get("address_3", "")
+            )
+            self.driver.find_element(By.NAME, "tb_city").send_keys(
+                company_data.get("city", "")
+            )
+            self.driver.find_element(By.NAME, "tb_poskod").send_keys(
+                company_data.get("postcode", "")
+            )
+
+            # 8. Select State
+            Select(self.driver.find_element(By.ID, "negeri1")).select_by_visible_text(
+                company_data.get("state", "")
+            )
+
+            # 9. Fill Phone Number
+            self.driver.find_element(By.NAME, "tb_telno").send_keys(
+                company_data.get("phone", "")
+            )
+            print("All fields in popup filled.")
+
+            # 10. Click 'Simpan'
+            simpan_button_locator = (
+                By.CSS_SELECTOR,
+                "input.btn-primary[value='Simpan ']",
+            )
+            simpan_button = self.wait.until(
+                EC.element_to_be_clickable(simpan_button_locator)
+            )
+            simpan_button.click()
+            print("Clicked 'Simpan'.")
+
+            # After submitting, switch back to the main content
+            self.driver.switch_to.default_content()
+            print("Switched back to main document.")
 
         except Exception as e:
             print(f"An error occurred in Phase 2: {e}")
+            # Ensure we switch back even if there's an error
+            self.driver.switch_to.default_content()
 
     def run_phase_3_bahagian_b(self):
         print("--- Running Phase 3: Bahagian B (Placeholder) ---")

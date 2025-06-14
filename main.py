@@ -33,13 +33,29 @@ class IGStampingAuto(tk.Tk):
         self.company_old_roc = tk.StringVar()
         self.company_new_roc = tk.StringVar()
         self.company_phone = tk.StringVar()
+        # NEW Company Address StringVars
+        self.company_address1 = tk.StringVar()
+        self.company_address2 = tk.StringVar()
+        self.company_address3 = tk.StringVar()
+        self.company_city = tk.StringVar()
+        self.company_postcode = tk.StringVar()
+        self.company_state = tk.StringVar()
+
         self.source_pdf_var = tk.StringVar()
         self.export_dir_var = tk.StringVar()
+
         self.insurance_search_var = tk.StringVar()
         self.insurance_name = tk.StringVar()
         self.insurance_old_roc = tk.StringVar()
         self.insurance_new_roc = tk.StringVar()
         self.insurance_phone = tk.StringVar()
+        # NEW Insurance Address StringVars
+        self.insurance_address1 = tk.StringVar()
+        self.insurance_address2 = tk.StringVar()
+        self.insurance_address3 = tk.StringVar()
+        self.insurance_city = tk.StringVar()
+        self.insurance_postcode = tk.StringVar()
+        self.insurance_state = tk.StringVar()
 
         # --- Style Configuration ---
         style = ttk.Style(self)
@@ -58,8 +74,15 @@ class IGStampingAuto(tk.Tk):
         )
 
         # --- Database Setup ---
+        # Always ensure tables exist
         database.create_tables()
-        database.add_default_insurance_if_empty()
+
+        # Conditionally preload data only if tables are empty
+        if database.is_company_table_empty():
+            database.preload_initial_companies()
+
+        if database.is_insurance_table_empty():
+            database.preload_initial_insurance()
 
         # --- UI Initialization ---
         self.create_main_window()

@@ -1,10 +1,13 @@
+# database.py
+
 import sqlite3
+import os
+import json
 
 DB_FILE = "data.db"
 
 
 def create_connection():
-    """Create a database connection to the SQLite database."""
     conn = None
     try:
         conn = sqlite3.connect(DB_FILE)
@@ -14,32 +17,40 @@ def create_connection():
 
 
 def create_tables():
-    """Create the necessary tables if they don't exist."""
     conn = create_connection()
     if conn is not None:
         try:
             cursor = conn.cursor()
-            # Table for main companies
+            # UPDATED SCHEMA: Replaced single 'address' with structured fields
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS companies (
                     name TEXT PRIMARY KEY,
-                    address TEXT,
+                    address_1 TEXT,
+                    address_2 TEXT,
+                    address_3 TEXT,
+                    city TEXT,
+                    postcode TEXT,
+                    state TEXT,
+                    phone TEXT,
                     old_roc TEXT,
-                    new_roc TEXT,
-                    phone TEXT
+                    new_roc TEXT
                 );
             """
             )
-            # Table for insurance companies
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS insurance_companies (
                     name TEXT PRIMARY KEY,
-                    address TEXT,
+                    address_1 TEXT,
+                    address_2 TEXT,
+                    address_3 TEXT,
+                    city TEXT,
+                    postcode TEXT,
+                    state TEXT,
+                    phone TEXT,
                     old_roc TEXT,
-                    new_roc TEXT,
-                    phone TEXT
+                    new_roc TEXT
                 );
             """
             )
@@ -50,14 +61,39 @@ def create_tables():
             conn.close()
 
 
-def add_company(name, address, old_roc, new_roc, phone):
-    """Add or update a company in the database."""
+# UPDATED FUNCTION: New parameters for structured address
+def add_company(
+    name,
+    address_1,
+    address_2,
+    address_3,
+    city,
+    postcode,
+    state,
+    phone,
+    old_roc,
+    new_roc,
+):
     conn = create_connection()
-    sql = """ INSERT OR REPLACE INTO companies(name, address, old_roc, new_roc, phone)
-              VALUES(?,?,?,?,?) """
+    sql = """ INSERT OR REPLACE INTO companies(name, address_1, address_2, address_3, city, postcode, state, phone, old_roc, new_roc)
+              VALUES(?,?,?,?,?,?,?,?,?,?) """
     try:
         cursor = conn.cursor()
-        cursor.execute(sql, (name, address, old_roc, new_roc, phone))
+        cursor.execute(
+            sql,
+            (
+                name,
+                address_1,
+                address_2,
+                address_3,
+                city,
+                postcode,
+                state,
+                phone,
+                old_roc,
+                new_roc,
+            ),
+        )
         conn.commit()
     except sqlite3.Error as e:
         print(f"Error adding company: {e}")
@@ -66,14 +102,38 @@ def add_company(name, address, old_roc, new_roc, phone):
             conn.close()
 
 
-def add_insurance_company(name, address, old_roc, new_roc, phone):
-    """Add or update an insurance company in the database."""
+def add_insurance_company(
+    name,
+    address_1,
+    address_2,
+    address_3,
+    city,
+    postcode,
+    state,
+    phone,
+    old_roc,
+    new_roc,
+):
     conn = create_connection()
-    sql = """ INSERT OR REPLACE INTO insurance_companies(name, address, old_roc, new_roc, phone)
-              VALUES(?,?,?,?,?) """
+    sql = """ INSERT OR REPLACE INTO insurance_companies(name, address_1, address_2, address_3, city, postcode, state, phone, old_roc, new_roc)
+              VALUES(?,?,?,?,?,?,?,?,?,?) """
     try:
         cursor = conn.cursor()
-        cursor.execute(sql, (name, address, old_roc, new_roc, phone))
+        cursor.execute(
+            sql,
+            (
+                name,
+                address_1,
+                address_2,
+                address_3,
+                city,
+                postcode,
+                state,
+                phone,
+                old_roc,
+                new_roc,
+            ),
+        )
         conn.commit()
     except sqlite3.Error as e:
         print(f"Error adding insurance company: {e}")
@@ -82,16 +142,16 @@ def add_insurance_company(name, address, old_roc, new_roc, phone):
             conn.close()
 
 
+# All 'get' functions now return a dictionary with the new address fields
 def get_company_by_name(name):
-    """Query a company by name."""
     conn = create_connection()
     try:
-        conn.row_factory = sqlite3.Row  # Allows accessing columns by name
+        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM companies WHERE name=?", (name,))
         row = cursor.fetchone()
         if row:
-            return dict(row)  # Return as a dictionary
+            return dict(row)
     except sqlite3.Error as e:
         print(f"Error getting company: {e}")
     finally:
@@ -101,7 +161,6 @@ def get_company_by_name(name):
 
 
 def get_insurance_company_by_name(name):
-    """Query an insurance company by name."""
     conn = create_connection()
     try:
         conn.row_factory = sqlite3.Row
@@ -119,15 +178,12 @@ def get_insurance_company_by_name(name):
 
 
 def get_all_company_names():
-    """Retrieve all company names."""
     conn = create_connection()
     names = []
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT name FROM companies ORDER BY name")
         rows = cursor.fetchall()
-        # rows will be a list of tuples, e.g., [('Company A',), ('Company B',)]
-        # We convert it to a simple list: ['Company A', 'Company B']
         names = [row[0] for row in rows]
     except sqlite3.Error as e:
         print(f"Error getting company names: {e}")
@@ -138,7 +194,6 @@ def get_all_company_names():
 
 
 def get_all_insurance_company_names():
-    """Retrieve all insurance company names."""
     conn = create_connection()
     names = []
     try:
@@ -155,7 +210,6 @@ def get_all_insurance_company_names():
 
 
 def delete_company(name):
-    """Delete a company from the database by name."""
     conn = create_connection()
     sql = "DELETE FROM companies WHERE name=?"
     try:
@@ -170,7 +224,6 @@ def delete_company(name):
 
 
 def delete_insurance_company(name):
-    """Delete an insurance company from the database by name."""
     conn = create_connection()
     sql = "DELETE FROM insurance_companies WHERE name=?"
     try:
@@ -184,38 +237,116 @@ def delete_insurance_company(name):
             conn.close()
 
 
+# UPDATED: Now inserts the Zurich data into the new structured fields
 def add_default_insurance_if_empty():
-    """
-    Checks if the insurance_companies table is empty and, if so,
-    adds the default Zurich General Insurance data.
-    """
     conn = create_connection()
     try:
         cursor = conn.cursor()
-        # Check if any records exist
         cursor.execute("SELECT COUNT(*) FROM insurance_companies")
         count = cursor.fetchone()[0]
-
-        # If no records exist, add the default one
         if count == 0:
             print("Insurance company table is empty. Adding default Zurich data.")
-            default_data = {
-                "name": "Zurich General Insurance Malaysia Berhad",
-                "address": "Level 23A, Mercu 3, No. 3, Jalan Bangsar, KL Eco City, 59200 Kuala Lumpur, Malaysia",
-                "new_roc": "201701035345",
-                "old_roc": "1249516-V",
-                "phone": "03-2109 6000",
-            }
-            # Use the existing add function to insert the data
+            # Based on the data you provided for Zurich
             add_insurance_company(
-                default_data["name"],
-                default_data["address"],
-                default_data["old_roc"],
-                default_data["new_roc"],
-                default_data["phone"],
+                name="Zurich General Insurance Malaysia Berhad",
+                address_1="LEVEL 23A, MERCU 3,",
+                address_2="NO. 3, JALAN BANGSAR,",
+                address_3="KL ECO CITY,",
+                city="KUALA LUMPUR",
+                postcode="59200",
+                state="Wilayah Persekutuan Kuala Lumpur",  # Using the full name from the dropdown
+                phone="0321096000",
+                old_roc="1249516V",
+                new_roc="201701035345",
             )
     except sqlite3.Error as e:
         print(f"Error checking/adding default insurance data: {e}")
     finally:
         if conn:
             conn.close()
+
+
+def is_company_table_empty():
+    """Checks if the main 'companies' table has any records."""
+    conn = create_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM companies")
+        count = cursor.fetchone()[0]
+        return count == 0
+    except sqlite3.Error:
+        return True  # Assume empty on error
+    finally:
+        if conn:
+            conn.close()
+
+
+def is_insurance_table_empty():
+    """Checks if the 'insurance_companies' table has any records."""
+    conn = create_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM insurance_companies")
+        count = cursor.fetchone()[0]
+        return count == 0
+    except sqlite3.Error:
+        return True
+    finally:
+        if conn:
+            conn.close()
+
+
+def preload_initial_companies():
+    """Loads company data from initial_companies.json into the database."""
+    json_file = "initial_data/initial_companies.json"
+    if not os.path.exists(json_file):
+        print(f"'{json_file}' not found. Skipping company preloading.")
+        return
+
+    print("Preloading initial company data from JSON...")
+    with open(json_file, "r") as f:
+        companies = json.load(f)
+
+    for company_data in companies:
+        print(f"  -> Loading data for {company_data['name']}")
+        add_company(
+            name=company_data.get("name"),
+            old_roc=company_data.get("old_roc"),
+            new_roc=company_data.get("new_roc"),
+            address_1=company_data.get("address_1"),
+            address_2=company_data.get("address_2"),
+            address_3=company_data.get("address_3"),
+            city=company_data.get("city"),
+            postcode=company_data.get("postcode"),
+            state=company_data.get("state"),
+            phone=company_data.get("phone"),
+        )
+    print("Company data preloading complete.")
+
+
+def preload_initial_insurance():
+    """Loads insurance data from initial_insurance.json into the database."""
+    json_file = "initial_data/initial_insurance.json"
+    if not os.path.exists(json_file):
+        print(f"'{json_file}' not found. Skipping insurance preloading.")
+        return
+
+    print("Preloading initial insurance data from JSON...")
+    with open(json_file, "r") as f:
+        insurances = json.load(f)
+
+    for insurance_data in insurances:
+        print(f"  -> Loading data for {insurance_data['name']}")
+        add_insurance_company(
+            name=insurance_data.get("name"),
+            old_roc=insurance_data.get("old_roc"),
+            new_roc=insurance_data.get("new_roc"),
+            address_1=insurance_data.get("address_1"),
+            address_2=insurance_data.get("address_2"),
+            address_3=insurance_data.get("address_3"),
+            city=insurance_data.get("city"),
+            postcode=insurance_data.get("postcode"),
+            state=insurance_data.get("state"),
+            phone=insurance_data.get("phone"),
+        )
+    print("Insurance data preloading complete.")
