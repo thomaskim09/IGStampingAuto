@@ -31,6 +31,8 @@ class IGStampingAuto(tk.Tk):
         self.uploaded_pdf_path = None
         self.all_company_names = []
         self.all_insurance_names = []
+        self.stop_event = threading.Event()  # Initialize the stop event
+        self.log_callback = None  # Will be set by AutomationTab
 
         # --- Tkinter UI Variables ---
         self.company_search_var = tk.StringVar()
@@ -83,6 +85,8 @@ class IGStampingAuto(tk.Tk):
 
         # --- UI Initialization ---
         self.create_main_widgets()
+        # Set the log_callback AFTER automation_tab_ui is initialized
+        self.log_callback = self.automation_tab_ui.log_message
         self.load_company_names_to_search()
         self.load_insurance_names_to_search()
         self.auto_populate_default_insurance()
@@ -121,13 +125,20 @@ class IGStampingAuto(tk.Tk):
                 driver = webdriver.Chrome(options=chrome_options)
                 _ = driver.window_handles
                 self.driver = driver
-                self.automation_instance = StampsAutomation(self.driver)
-                print("Successfully connected to existing Chrome instance.")
+                # Pass log_callback to StampsAutomation
+                self.automation_instance = StampsAutomation(
+                    self.driver, self.stop_event, self.log_callback
+                )
+                print(
+                    "Successfully connected to existing Chrome instance."
+                )  # This print will still go to console
                 self.after(0, self.update_status, "● Connected to Chrome", "#28a745")
             except Exception as e:
                 self.driver = None
                 self.automation_instance = None
-                print(f"Port 9222 is open, but connection failed: {e}")
+                print(
+                    f"Port 9222 is open, but connection failed: {e}"
+                )  # This print will still go to console
                 self.after(
                     0,
                     self.update_status,
@@ -139,7 +150,9 @@ class IGStampingAuto(tk.Tk):
             self.driver = None
             self.automation_instance = None
             if not is_retrying:
-                print("No active Chrome instance found.")
+                print(
+                    "No active Chrome instance found."
+                )  # This print will still go to console
                 self.after(
                     0,
                     self.update_status,
@@ -191,14 +204,32 @@ class IGStampingAuto(tk.Tk):
 
         self.company_tab_ui = CompanyTab(company_tab_frame, self)
         self.insurance_tab_ui = InsuranceTab(insurance_tab_frame, self)
-        self.automation_tab_ui = AutomationTab(automation_tab_frame, self)
+        self.automation_tab_ui = AutomationTab(
+            automation_tab_frame, self
+        )  # Ensure this is initialized before log_callback is set
 
     def start_full_automation(self):
         """A central method to start the automation, called from any tab."""
+        # Before starting, clear any previous stop signals
+        self.stop_event.clear()
         if hasattr(self, "automation_tab_ui") and self.automation_tab_ui:
             self.automation_tab_ui.start_full_automation()
         else:
             messagebox.showerror("Error", "Automation components are not ready.")
+
+    def stop_automation(self):
+        """Method to set the stop event and signal the automation thread to stop."""
+        if messagebox.askyesno(
+            "Stop Automation",
+            "Are you sure you want to stop the current automation process?",
+        ):
+            self.stop_event.set()  # Set the event to signal the thread to stop
+            self.update_status("Stopping automation...", "#ffc107")  # Yellow
+            if self.log_callback:  # Log to UI if callback is available
+                self.log_callback("User requested to stop automation.")
+            self.update_status(
+                "● Automation stop signal sent. Chrome remains open.", "#6c757d"
+            )  # Grey
 
     def load_company_names_to_search(self):
         self.all_company_names = database.get_all_company_names()
