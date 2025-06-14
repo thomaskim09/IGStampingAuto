@@ -3,9 +3,14 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 import os
+import threading
+import socket
+import time
+from selenium import webdriver
 
 # Local module imports
 import database
+from automation import StampsAutomation
 from ui_company_tab import CompanyTab
 from ui_insurance_tab import InsuranceTab
 from ui_automation_tab import AutomationTab
@@ -15,7 +20,7 @@ class IGStampingAuto(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("IG Stamping Automation")
-        self.geometry("800x700")
+        self.geometry("800x725")  # Increased height for the status bar
 
         # --- Core Application State Variables ---
         self.driver = None
@@ -27,29 +32,25 @@ class IGStampingAuto(tk.Tk):
         self.all_company_names = []
         self.all_insurance_names = []
 
-        # --- Tkinter UI Variables (The Application's Data Model) ---
+        # --- Tkinter UI Variables ---
         self.company_search_var = tk.StringVar()
         self.company_name = tk.StringVar()
         self.company_old_roc = tk.StringVar()
         self.company_new_roc = tk.StringVar()
         self.company_phone = tk.StringVar()
-        # NEW Company Address StringVars
         self.company_address1 = tk.StringVar()
         self.company_address2 = tk.StringVar()
         self.company_address3 = tk.StringVar()
         self.company_city = tk.StringVar()
         self.company_postcode = tk.StringVar()
         self.company_state = tk.StringVar()
-
         self.source_pdf_var = tk.StringVar()
         self.export_dir_var = tk.StringVar()
-
         self.insurance_search_var = tk.StringVar()
         self.insurance_name = tk.StringVar()
         self.insurance_old_roc = tk.StringVar()
         self.insurance_new_roc = tk.StringVar()
         self.insurance_phone = tk.StringVar()
-        # NEW Insurance Address StringVars
         self.insurance_address1 = tk.StringVar()
         self.insurance_address2 = tk.StringVar()
         self.insurance_address3 = tk.StringVar()
@@ -74,24 +75,109 @@ class IGStampingAuto(tk.Tk):
         )
 
         # --- Database Setup ---
-        # Always ensure tables exist
         database.create_tables()
-
-        # Conditionally preload data only if tables are empty
         if database.is_company_table_empty():
             database.preload_initial_companies()
-
         if database.is_insurance_table_empty():
             database.preload_initial_insurance()
 
         # --- UI Initialization ---
-        self.create_main_window()
-        self.load_company_names_to_search()  # Initial data load
+        self.create_main_widgets()
+        self.load_company_names_to_search()
         self.load_insurance_names_to_search()
-        self.auto_populate_default_insurance()  # This is the corrected call
+        self.auto_populate_default_insurance()
 
-    def create_main_window(self):
-        """Creates the main notebook and populates tabs from other UI files."""
+        # --- Start the non-blocking check on startup ---
+        self.attempt_reconnect_to_chrome()
+
+    def update_status(self, text, color):
+        """Thread-safe method to update the status bar."""
+        status_frame = self.status_label.master
+        status_frame.config(bg=color)
+        self.status_label.config(background=color, foreground="white")
+        self.status_var.set(text)
+
+    def _threaded_chrome_check(self, is_retrying=False):
+        """
+        Runs in a background thread. Uses a fast socket check and then
+        connects with Selenium, updating the UI based on the result.
+        """
+        if is_retrying:
+            time.sleep(2)  # Give Chrome a moment to start up after launch
+
+        # Fast check using a socket to see if the port is open
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(1)  # Short timeout of 1 second
+        result = sock.connect_ex(("127.0.0.1", 9222))
+        sock.close()
+
+        if result == 0:
+            # Port is open, now try to connect with Selenium
+            try:
+                chrome_options = webdriver.ChromeOptions()
+                chrome_options.add_experimental_option(
+                    "debuggerAddress", "127.0.0.1:9222"
+                )
+                driver = webdriver.Chrome(options=chrome_options)
+                _ = driver.window_handles
+                self.driver = driver
+                self.automation_instance = StampsAutomation(self.driver)
+                print("Successfully connected to existing Chrome instance.")
+                self.after(0, self.update_status, "● Connected to Chrome", "#28a745")
+            except Exception as e:
+                self.driver = None
+                self.automation_instance = None
+                print(f"Port 9222 is open, but connection failed: {e}")
+                self.after(
+                    0,
+                    self.update_status,
+                    "● Connection Error. Please 'Prepare Chrome'.",
+                    "#ffc107",
+                )
+        else:
+            # Port is not open
+            self.driver = None
+            self.automation_instance = None
+            if not is_retrying:
+                print("No active Chrome instance found.")
+                self.after(
+                    0,
+                    self.update_status,
+                    "● Disconnected. Use 'Prepare Chrome' to start.",
+                    "#6c757d",
+                )
+
+    def attempt_reconnect_to_chrome(self, is_retrying=False):
+        """
+        Starts the connection check in a separate thread to keep the UI responsive.
+        The 'is_retrying' flag prevents certain messages from appearing after a launch attempt.
+        """
+        if not is_retrying:
+            self.update_status("Checking for Chrome...", "#ffc107")
+
+        thread = threading.Thread(
+            target=self._threaded_chrome_check, args=(is_retrying,), daemon=True
+        )
+        thread.start()
+
+    def create_main_widgets(self):
+        """Creates the main notebook, tabs, and status bar."""
+        # Status Bar
+        self.status_var = tk.StringVar()
+        status_frame = tk.Frame(self, bg="#6c757d")
+        status_frame.pack(side=tk.BOTTOM, fill=tk.X)
+        self.status_label = ttk.Label(
+            status_frame,
+            textvariable=self.status_var,
+            padding=(10, 5),
+            anchor=tk.W,
+            font=("Segoe UI", 9, "bold"),
+            background="#6c757d",
+            foreground="white",
+        )
+        self.status_label.pack(fill=tk.X)
+
+        # Notebook
         self.notebook = ttk.Notebook(self)
         self.notebook.pack(pady=10, padx=10, expand=True, fill="both")
 
@@ -110,7 +196,7 @@ class IGStampingAuto(tk.Tk):
     def start_full_automation(self):
         """A central method to start the automation, called from any tab."""
         if hasattr(self, "automation_tab_ui") and self.automation_tab_ui:
-            self.automation_tab_ui.start_automation()
+            self.automation_tab_ui.start_full_automation()
         else:
             messagebox.showerror("Error", "Automation components are not ready.")
 
@@ -125,18 +211,10 @@ class IGStampingAuto(tk.Tk):
             self.insurance_tab_ui.insurance_combo["values"] = self.all_insurance_names
 
     def auto_populate_default_insurance(self):
-        """
-        Gets the first insurance company from the DB and tells the UI tab
-        to populate its form with that data.
-        """
-        # This check ensures the UI has been built before we try to access it
         if hasattr(self, "insurance_tab_ui"):
-            # Get the default name from the database
             names = database.get_all_insurance_company_names()
             if names:
-                # Set the search variable in the main app
                 self.insurance_search_var.set(names[0])
-                # Call the correct, existing function in the UI tab
                 self.insurance_tab_ui.populate_insurance_form()
 
 

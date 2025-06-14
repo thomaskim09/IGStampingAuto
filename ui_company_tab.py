@@ -5,24 +5,20 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import os
 import subprocess
-from PIL import Image, ImageTk
+import threading
 from selenium import webdriver
+from PIL import Image, ImageTk
 
 # Local module imports
 import database
 import pdf_processor
-import automation
+from automation import StampsAutomation
 
 
 class CompanyTab:
     def __init__(self, parent_tab, app):
-        """
-        Initializes the Company Information Tab UI and its logic.
-        :param parent_tab: The parent ttk.Frame (the tab itself).
-        :param app: The main application instance (IGStampingAuto).
-        """
         self.parent_tab = parent_tab
-        self.app = app  # Main application instance
+        self.app = app
         self.create_widgets()
 
     def create_widgets(self):
@@ -90,63 +86,54 @@ class CompanyTab:
         ttk.Entry(form_frame, textvariable=self.app.company_name).grid(
             row=0, column=1, sticky="ew", padx=5, pady=5
         )
-
         ttk.Label(form_frame, text="Address 1:").grid(
             row=1, column=0, sticky="w", padx=5, pady=5
         )
         ttk.Entry(form_frame, textvariable=self.app.company_address1).grid(
             row=1, column=1, sticky="ew", padx=5, pady=5
         )
-
         ttk.Label(form_frame, text="Address 2:").grid(
             row=2, column=0, sticky="w", padx=5, pady=5
         )
         ttk.Entry(form_frame, textvariable=self.app.company_address2).grid(
             row=2, column=1, sticky="ew", padx=5, pady=5
         )
-
         ttk.Label(form_frame, text="Address 3:").grid(
             row=3, column=0, sticky="w", padx=5, pady=5
         )
         ttk.Entry(form_frame, textvariable=self.app.company_address3).grid(
             row=3, column=1, sticky="ew", padx=5, pady=5
         )
-
         ttk.Label(form_frame, text="Postcode:").grid(
             row=4, column=0, sticky="w", padx=5, pady=5
         )
         ttk.Entry(form_frame, textvariable=self.app.company_postcode).grid(
             row=4, column=1, sticky="ew", padx=5, pady=5
         )
-
         ttk.Label(form_frame, text="City:").grid(
             row=5, column=0, sticky="w", padx=5, pady=5
         )
         ttk.Entry(form_frame, textvariable=self.app.company_city).grid(
             row=5, column=1, sticky="ew", padx=5, pady=5
         )
-
         ttk.Label(form_frame, text="State:").grid(
             row=6, column=0, sticky="w", padx=5, pady=5
         )
         ttk.Entry(form_frame, textvariable=self.app.company_state).grid(
             row=6, column=1, sticky="ew", padx=5, pady=5
         )
-
         ttk.Label(form_frame, text="Old ROC Number:").grid(
             row=7, column=0, sticky="w", padx=5, pady=5
         )
         ttk.Entry(form_frame, textvariable=self.app.company_old_roc).grid(
             row=7, column=1, sticky="ew", padx=5, pady=5
         )
-
         ttk.Label(form_frame, text="New ROC Number:").grid(
             row=8, column=0, sticky="w", padx=5, pady=5
         )
         ttk.Entry(form_frame, textvariable=self.app.company_new_roc).grid(
             row=8, column=1, sticky="ew", padx=5, pady=5
         )
-
         ttk.Label(form_frame, text="Telephone Number:").grid(
             row=9, column=0, sticky="w", padx=5, pady=5
         )
@@ -158,6 +145,7 @@ class CompanyTab:
         button_frame = ttk.Frame(main_frame)
         button_frame.pack(fill="x", pady=(10, 5), padx=5)
 
+        # Right-aligned buttons
         ttk.Button(
             button_frame,
             text="Start Automation",
@@ -166,7 +154,13 @@ class CompanyTab:
         ttk.Button(
             button_frame, text="Prepare Chrome", command=self.prepare_chrome
         ).pack(side="right", padx=5)
+        ttk.Button(
+            button_frame,
+            text="Check Chrome",
+            command=self.app.attempt_reconnect_to_chrome,
+        ).pack(side="right")
 
+        # Left-aligned buttons
         ttk.Button(
             button_frame, text="Clear Form", command=self.clear_company_form
         ).pack(side="left")
@@ -183,52 +177,41 @@ class CompanyTab:
             command=self.delete_company,
         ).pack(side="left")
 
-    def show_startup_info_popup(self):
-        image_path = os.path.join("resource", "startup_page.jpg")
-        if not os.path.exists(image_path):
-            self.app.attributes("-topmost", 1)
-            messagebox.showwarning(
-                "Image Not Found",
-                f"Could not find '{image_path}'.\nPlease make sure the screenshot exists in the 'resource' folder.",
-            )
-            self.app.attributes("-topmost", 0)
+    def _threaded_prepare_chrome(self):
+        """Launches and connects to Chrome in a background thread to prevent UI freeze."""
+        # This is now the primary logic for preparing Chrome
+        try:
+            # 1. First, try to connect to an existing instance
+            self.app.after(
+                0, self.app.update_status, "Connecting to Chrome...", "#ffc107"
+            )  # Yellow
+
+            chrome_options = webdriver.ChromeOptions()
+            chrome_options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
+
+            # Use a service with a shorter timeout to fail faster
+            service = webdriver.chrome.service.Service()
+            service.start()
+
+            driver = webdriver.Remote(service.service_url, options=chrome_options)
+            _ = driver.window_handles
+
+            self.app.driver = driver
+            self.app.automation_instance = StampsAutomation(self.app.driver)
+            self.app.after(
+                0, self.app.update_status, "● Connected to Chrome", "#28a745"
+            )  # Green
             return
 
-        popup = tk.Toplevel(self.app)
-        popup.title("Chrome Prepared")
+        except Exception:
+            self.app.after(
+                0,
+                self.app.update_status,
+                "No instance found. Launching Chrome...",
+                "#17a2b8",
+            )  # Blue
 
-        # --- Increased window and thumbnail size ---
-        popup.attributes("-topmost", True)
-        popup.geometry("800x600")
-
-        popup.update_idletasks()
-        width = popup.winfo_width()
-        height = popup.winfo_height()
-        x = (popup.winfo_screenwidth() // 2) - (width // 2)
-        y = (popup.winfo_screenheight() // 2) - (height // 2)
-        popup.geometry(f"{width}x{height}+{x}+{y}")
-
-        img = Image.open(image_path)
-        img.thumbnail((780, 500))  # Increased thumbnail size
-        photo = ImageTk.PhotoImage(img)
-        img_label = ttk.Label(popup, image=photo)
-        img_label.image = photo
-        img_label.pack(pady=10)
-
-        text_label = ttk.Label(
-            popup,
-            text="Please log in and navigate to the correct page in the new Chrome window.",
-            wraplength=780,
-        )
-        text_label.pack(pady=5)
-        ok_button = ttk.Button(popup, text="OK", command=popup.destroy)
-        ok_button.pack(pady=10)
-
-        popup.transient(self.app)
-        popup.grab_set()
-        self.app.wait_window(popup)
-
-    def prepare_chrome(self):
+        # 2. If connection failed, launch a new Chrome instance
         profile_path = os.path.join(os.getcwd(), "chrome_profile")
         target_website = "https://stamps.hasil.gov.my/stamps/"
         command = [
@@ -239,26 +222,74 @@ class CompanyTab:
         ]
         try:
             subprocess.Popen(command)
-            self.show_startup_info_popup()
+            self.app.after(
+                0, self.show_startup_info_popup
+            )  # Schedule popup on main thread
 
-            # --- Import webdriver correctly ---
-            chrome_options = webdriver.ChromeOptions()
-            chrome_options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
-            self.app.driver = webdriver.Chrome(options=chrome_options)
-            self.app.automation_instance = automation.StampsAutomation(self.app.driver)
+            # Retry connecting after launch
+            self.app.attempt_reconnect_to_chrome(is_retrying=True)
 
-            # --- Bring messagebox to front ---
-            self.app.attributes("-topmost", 1)
-            messagebox.showinfo("Success", "Successfully connected to Chrome.")
-            self.app.attributes("-topmost", 0)
-
+        except FileNotFoundError:
+            self.app.after(
+                0,
+                self.app.update_status,
+                "● Disconnected. Chrome not found.",
+                "#dc3545",
+            )  # Red
+            self.app.after(
+                0, messagebox.showerror, "Error", "Could not find 'chrome.exe'."
+            )
         except Exception as e:
-            # --- Bring messagebox to front ---
-            self.app.attributes("-topmost", 1)
-            messagebox.showerror("Error", f"Failed to prepare Chrome or connect: {e}")
-            self.app.attributes("-topmost", 0)
+            self.app.after(
+                0,
+                self.app.update_status,
+                "● Disconnected. Failed to connect.",
+                "#dc3545",
+            )  # Red
+            self.app.after(
+                0, messagebox.showerror, "Error", f"Failed to prepare Chrome: {e}"
+            )
             self.app.driver = None
             self.app.automation_instance = None
+
+    def prepare_chrome(self):
+        """Starts the Chrome preparation in a background thread to keep the UI responsive."""
+        threading.Thread(target=self._threaded_prepare_chrome, daemon=True).start()
+
+    def show_startup_info_popup(self):
+        image_path = os.path.join("resource", "startup_page.jpg")
+        if not os.path.exists(image_path):
+            self.app.attributes("-topmost", 1)
+            messagebox.showwarning("Image Not Found", f"Could not find '{image_path}'.")
+            self.app.attributes("-topmost", 0)
+            return
+
+        popup = tk.Toplevel(self.app)
+        popup.title("Chrome Prepared")
+        popup.attributes("-topmost", True)
+        popup.geometry("800x600")
+        popup.update_idletasks()
+        width, height = popup.winfo_width(), popup.winfo_height()
+        x = (popup.winfo_screenwidth() // 2) - (width // 2)
+        y = (popup.winfo_screenheight() // 2) - (height // 2)
+        popup.geometry(f"{width}x{height}+{x}+{y}")
+        img = Image.open(image_path)
+        img.thumbnail((780, 500))
+        photo = ImageTk.PhotoImage(img)
+        img_label = ttk.Label(popup, image=photo)
+        img_label.image = photo
+        img_label.pack(pady=10)
+        text_label = ttk.Label(
+            popup,
+            text="Please log in and navigate to the correct page in the new Chrome window.",
+            wraplength=780,
+        )
+        text_label.pack(pady=5)
+        ok_button = ttk.Button(popup, text="OK", command=popup.destroy)
+        ok_button.pack(pady=10)
+        popup.transient(self.app)
+        popup.grab_set()
+        self.app.wait_window(popup)
 
     def on_company_search_type(self, event):
         typed_text = self.app.company_search_var.get().lower()
@@ -312,17 +343,12 @@ class CompanyTab:
         )
         if not filepath:
             return
-
         self.clear_company_form()
-
         self.app.uploaded_pdf_path = filepath
         self.app.source_pdf_var.set(filepath)
-
-        # --- Create and set 'output_stamped' folder in the source PDF's directory ---
         source_directory = os.path.dirname(filepath)
         output_directory = os.path.join(source_directory, "output_stamped")
         self.app.export_dir_var.set(output_directory)
-
         extracted_data = pdf_processor.extract_info_from_pdf(filepath)
         if not extracted_data or not extracted_data.get("name"):
             messagebox.showwarning(
@@ -330,30 +356,24 @@ class CompanyTab:
                 "Could not automatically find a company name in the PDF.",
             )
             return
-
         company_name_from_pdf = extracted_data.get("name")
-
-        # --- Smart company matching logic ---
         first_word = company_name_from_pdf.split()[0].lower()
         found_match = False
         for company_name in self.app.all_company_names:
             if company_name.lower().startswith(first_word):
-                # Found the first likely match
                 self.app.company_search_var.set(company_name)
                 self.populate_company_form()
                 messagebox.showinfo(
                     "Company Matched",
-                    f"Found a likely match '{company_name}' in the database based on the PDF.",
+                    f"Found a likely match '{company_name}' in the database.",
                 )
                 found_match = True
-                break  # Stop after finding the first match
-
+                break
         if not found_match:
-            # If no match is found after checking all names, treat as a new company
             self.app.company_name.set(company_name_from_pdf)
             messagebox.showinfo(
                 "New Company Detected",
-                "No close match found in the database. Extracted new company info from PDF. Please review and save the full address.",
+                "No close match found. Extracted new company info from PDF.",
             )
 
     def save_company(self):
@@ -390,56 +410,44 @@ class CompanyTab:
             messagebox.showinfo("Success", f"Company '{name}' deleted successfully.")
 
     def add_remark_to_pdf(self):
-        """
-        Manually triggers the PDF labeling process using data from the form.
-        """
         source_pdf = self.app.uploaded_pdf_path
-        # --- Base directory is now the default output path ---
         base_export_dir = self.app.output_dir_path
         unique_id = self.app.adjudikasi_id.get()
         old_roc = self.app.company_old_roc.get()
         new_roc = self.app.company_new_roc.get()
         roc_text = f"{new_roc}/{old_roc}"
-
         if not all([source_pdf, base_export_dir, unique_id, old_roc, new_roc]):
             messagebox.showerror(
                 "Missing Information",
-                "Please ensure a Source PDF is uploaded, an Export Directory is set, "
-                "and the Adjudication Number and both ROC number fields are filled.",
+                "Please ensure a Source PDF is uploaded, an Export Directory is set, and the Adjudication Number and both ROC number fields are filled.",
             )
             return
-
-        # --- Create a unique subfolder based on the ID ---
         output_folder = self.app.export_dir_var.get()
         os.makedirs(output_folder, exist_ok=True)
-
         pdf_filename = os.path.basename(source_pdf)
         output_path = os.path.join(output_folder, pdf_filename)
-
         success = pdf_processor.add_labels_to_pdf(
             source_path=source_pdf,
             output_path=output_path,
             unique_id=unique_id,
             roc_text=roc_text,
         )
-
         if success:
             messagebox.showinfo(
                 "PDF Generated",
                 f"Successfully generated labeled PDF at:\n{output_path}",
             )
-            # --- Auto-open the PDF ---
             try:
                 if platform.system() == "Windows":
                     os.startfile(output_path)
-                elif platform.system() == "Darwin":  # macOS
+                elif platform.system() == "Darwin":
                     subprocess.Popen(["open", output_path])
-                else:  # Linux
+                else:
                     subprocess.Popen(["xdg-open", output_path])
             except Exception as e:
                 messagebox.showerror(
                     "Error Opening PDF",
-                    f"Failed to open the PDF automatically. Please open it manually from: {output_path}\nError: {e}",
+                    f"Failed to open the PDF automatically.\nError: {e}",
                 )
         else:
             messagebox.showerror("PDF Generation Failed", "Could not label the PDF.")
