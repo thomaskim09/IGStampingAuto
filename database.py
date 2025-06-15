@@ -1,10 +1,18 @@
-# database.py
-
 import sqlite3
 import os
 import json
+import sys
 
 DB_FILE = "data.db"
+
+
+def resource_path(relative_path):
+    """Get absolute path to resource, works for dev and for PyInstaller"""
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
 
 def create_connection():
@@ -21,7 +29,6 @@ def create_tables():
     if conn is not None:
         try:
             cursor = conn.cursor()
-            # UPDATED SCHEMA: Replaced single 'address' with structured fields
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS companies (
@@ -61,7 +68,6 @@ def create_tables():
             conn.close()
 
 
-# UPDATED FUNCTION: New parameters for structured address
 def add_company(
     name,
     address_1,
@@ -142,7 +148,6 @@ def add_insurance_company(
             conn.close()
 
 
-# All 'get' functions now return a dictionary with the new address fields
 def get_company_by_name(name):
     conn = create_connection()
     try:
@@ -237,7 +242,6 @@ def delete_insurance_company(name):
             conn.close()
 
 
-# UPDATED: Now inserts the Zurich data into the new structured fields
 def add_default_insurance_if_empty():
     conn = create_connection()
     try:
@@ -298,7 +302,7 @@ def is_insurance_table_empty():
 
 def preload_initial_companies():
     """Loads company data from initial_companies.json into the database."""
-    json_file = "initial_data/initial_companies.json"
+    json_file = resource_path("initial_data/initial_companies.json")
     if not os.path.exists(json_file):
         print(f"'{json_file}' not found. Skipping company preloading.")
         return
@@ -326,7 +330,7 @@ def preload_initial_companies():
 
 def preload_initial_insurance():
     """Loads insurance data from initial_insurance.json into the database."""
-    json_file = "initial_data/initial_insurance.json"
+    json_file = resource_path("initial_data/initial_insurance.json")
     if not os.path.exists(json_file):
         print(f"'{json_file}' not found. Skipping insurance preloading.")
         return

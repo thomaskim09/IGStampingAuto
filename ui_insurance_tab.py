@@ -48,7 +48,7 @@ class InsuranceTab:
             row=0, column=1, sticky="ew", padx=5, pady=5
         )
 
-        # New Structured Address Fields
+        # Structured Address Fields
         ttk.Label(form_frame, text="Address 1:").grid(
             row=1, column=0, sticky="w", padx=5, pady=5
         )

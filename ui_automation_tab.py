@@ -1,5 +1,3 @@
-# ui_automation_tab.py
-
 from tkinter import ttk, messagebox, scrolledtext
 import os
 import threading
@@ -15,7 +13,6 @@ class AutomationTab:
         self.create_widgets()
 
     def get_company_data_from_form(self):
-        # This method is unchanged
         company_data = {
             "name": self.app.company_name.get(),
             "address_1": self.app.company_address1.get(),
@@ -34,7 +31,6 @@ class AutomationTab:
         return company_data
 
     def get_insurance_data_from_form(self):
-        # This method is unchanged
         insurance_data = {
             "name": self.app.insurance_name.get(),
             "address_1": self.app.insurance_address1.get(),

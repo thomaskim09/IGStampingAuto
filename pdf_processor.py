@@ -11,9 +11,7 @@ def extract_info_from_pdf(pdf_path):
         doc = fitz.open(pdf_path)
         full_text = ""
         for page in doc:
-            full_text += page.get_text().replace(
-                "\n", " "
-            )  # Replace newlines with spaces for easier matching
+            full_text += page.get_text().replace("\n", " ")
 
         # Pattern 1: Find the company name between "As requested by of" and ", of"
         name_match = re.search(

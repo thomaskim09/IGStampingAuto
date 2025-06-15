@@ -1,8 +1,7 @@
-# main.py
-
 import tkinter as tk
 from tkinter import ttk, messagebox
 import os
+import sys
 import threading
 import socket
 import time
@@ -17,6 +16,17 @@ from ui_insurance_tab import InsuranceTab
 from ui_automation_tab import AutomationTab
 
 
+# --- Helper function to find data files ---
+def resource_path(relative_path):
+    """Get absolute path to resource, works for dev and for PyInstaller"""
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
+
 class IGStampingAuto(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -24,19 +34,16 @@ class IGStampingAuto(tk.Tk):
 
         # --- Set Application Icon ---
         try:
-            # Assumes your icon is named 'app_icon.png' and is in the 'resource' folder
-            icon_path = os.path.join("resource", "app_icon.png")
+            icon_path = resource_path(os.path.join("resource", "app_icon.png"))
             if os.path.exists(icon_path):
                 photo = ImageTk.PhotoImage(file=icon_path)
                 self.iconphoto(False, photo)
             else:
-                print(
-                    "Warning: Icon file not found at 'resource/app_icon.png', using default icon."
-                )
+                print("Warning: Icon file not found.")
         except Exception as e:
             print(f"Error setting application icon: {e}")
 
-        # --- Fix for Perfect Window Centering ---
+        # --- Perfect Window Centering ---
         window_width = 800
         window_height = 760
         screen_width = self.winfo_screenwidth()

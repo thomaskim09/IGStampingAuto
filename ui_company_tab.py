@@ -1,6 +1,5 @@
-# ui_company_tab.py
-
 import platform
+import sys
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import os
@@ -13,6 +12,16 @@ from PIL import Image, ImageTk
 import database
 import pdf_processor
 from automation import StampsAutomation
+
+
+# --- Helper function to find data files ---
+def resource_path(relative_path):
+    """Get absolute path to resource, works for dev and for PyInstaller"""
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
 
 class ToolTip:
@@ -243,7 +252,6 @@ class CompanyTab:
             self.app.after(
                 0, self.app.update_status, "● Connected to Chrome", "#28a745"
             )
-            # --- Fix for Popup Not Showing ---
             # Always show the popup, even if successfully connected.
             self.app.after(0, self.show_startup_info_popup)
             return
@@ -330,12 +338,12 @@ class CompanyTab:
     def show_startup_info_popup(self):
         self.steps_data = [
             {
-                "image": os.path.join("resource", "startup_page.jpg"),
+                "image": resource_path(os.path.join("resource", "startup_page.jpg")),
                 "text": "Step 1: Please start a new 'Permohonan Am', select the correct 'Negeri', and choose the date based on the IG PDF.",
             },
             {
-                "image": os.path.join("resource", "startup_page_2.jpg"),
-                "text": "Step 2: Before starting the automation, please ensure you have navigated to this page. This is the starting page for the automation.",
+                "image": resource_path(os.path.join("resource", "startup_image_2.jpg")),
+                "text": "Step 2: Before starting the automation, please ensure you have navigated to this page to fill in the company details. This is the starting page for the automation.",
             },
         ]
         self.current_step = 0

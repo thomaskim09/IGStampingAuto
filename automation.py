@@ -17,7 +17,7 @@ class StampsAutomation:
         Initializes the automation class with a Selenium WebDriver instance.
         """
         self.driver = driver
-        self.wait = WebDriverWait(self.driver, 5)  # Increased timeout to 5 seconds
+        self.wait = WebDriverWait(self.driver, 5)
         self.stop_event = stop_event
         self.log_callback = (
             log_callback if log_callback else print
