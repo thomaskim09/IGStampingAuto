@@ -4,6 +4,7 @@ from tkinter import ttk, messagebox, scrolledtext
 import os
 import threading
 import pdf_processor
+from selenium.common.exceptions import NoSuchWindowException, WebDriverException
 
 
 class AutomationTab:
@@ -66,22 +67,47 @@ class AutomationTab:
             self.log_area.see("end")
             self.log_area.configure(state="disabled")
 
+    def _handle_error(self, e):
+        """A centralized function to handle automation errors."""
+        error_string = str(e).lower()
+        # Expanded list of keywords to detect a lost browser connection
+        connection_error_keywords = [
+            "no such window",
+            "target window already closed",
+            "disconnected",
+            "cannot determine loading status",
+            "message port closed",
+            "stacktrace",  # Catches generic driver crashes
+        ]
+
+        if isinstance(e, (NoSuchWindowException, WebDriverException)) and any(
+            keyword in error_string for keyword in connection_error_keywords
+        ):
+            custom_error_message = 'Connection to Chrome was lost. Please use the "Check Chrome" feature to reconnect, or the "Prepare Chrome" feature if Chrome was closed.'
+            self.log_message(f"ERROR: {custom_error_message}")
+            self.app.after(
+                0, messagebox.showerror, "Connection Error", custom_error_message
+            )
+        else:
+            # For all other errors, show the specific error message
+            error_message = f"An unexpected error occurred: {str(e)}"
+            self.log_message(f"ERROR: {error_message}")
+            self.app.after(0, messagebox.showerror, "Automation Error", error_message)
+
     def _threaded_automation_runner(
         self, task_function, start_log_message, success_log_message, *args
-    ):  # Modified signature
+    ):
         """
         A generic wrapper to run any automation task in a background thread.
         """
-        self.log_message(start_log_message)  # Use dedicated start message
+        self.log_message(start_log_message)
         try:
-            task_function(*args)
-            self.log_message(
-                f"SUCCESS: {success_log_message}"
-            )  # Use dedicated success message
-            # Schedule success message to run on main thread
+            result = task_function(*args)
+            self.log_message(f"SUCCESS: {success_log_message}")
+            if "Phase 1" in start_log_message and result:
+                self.app.after(0, self.app.adjudikasi_id.set, result)
             self.app.after(0, messagebox.showinfo, "Success", success_log_message)
         except InterruptedError:
-            # This is the graceful stop signal
             self.log_message("WARNING: Automation process was stopped by the user.")
             self.app.after(
                 0,
@@ -90,19 +116,14 @@ class AutomationTab:
                 "The automation process was stopped by the user.",
             )
         except Exception as e:
-            error_message = f"An error occurred: {str(e)}"
-            self.log_message(f"ERROR: {error_message}")
-            # Do NOT re-raise, so traceback is not printed to console by the thread
-            self.app.after(0, messagebox.showerror, "Automation Error", error_message)
+            self._handle_error(e)  # Use the centralized error handler
         finally:
-            # Always reset status bar on main thread after task completion
             if self.app.driver and self.app.automation_instance:
                 self.app.after(
                     0, self.app.update_status, "● Connected to Chrome", "#28a745"
                 )
             else:
                 self.app.after(0, self.app.update_status, "● Disconnected", "#6c757d")
-            # Ensure the stop event is cleared for the next run if it wasn't a full stop
             self.app.stop_event.clear()
 
     def start_automation_thread(
@@ -110,7 +131,7 @@ class AutomationTab:
         task_function,
         start_log_message,
         success_log_message,
-        *args,  # Modified signature
+        *args,
     ):
         """
         Validates connection and starts the threaded automation runner.
@@ -121,10 +142,7 @@ class AutomationTab:
             )
             return
 
-        # Clear the stop event before starting a new thread
         self.app.stop_event.clear()
-
-        # The status bar text can still use its original format if desired
         self.app.update_status(
             start_log_message.replace("Starting task: ", "").replace("...", "..."),
             "#17a2b8",
@@ -136,7 +154,7 @@ class AutomationTab:
                 start_log_message,
                 success_log_message,
                 *args,
-            ),  # Pass all new arguments
+            ),
             daemon=True,
         ).start()
 
@@ -157,40 +175,36 @@ class AutomationTab:
         ).pack(pady=5, fill="x")
         ttk.Button(
             main_frame,
-            text="Run Phase 3: Bahagian B",
+            text="Run Phase 3: Lampiran",
             command=self.run_automation_phase3_only,
         ).pack(pady=5, fill="x")
         ttk.Button(
             main_frame,
-            text="Run Phase 4: Lampiran",
+            text="Run Phase 4: Perakuan",
             command=self.run_automation_phase4_only,
-        ).pack(pady=5, fill="x")
-        ttk.Button(
-            main_frame,
-            text="Run Phase 5: Perakuan",
-            command=self.run_automation_phase5_only,
         ).pack(pady=5, fill="x")
 
         ttk.Separator(main_frame, orient="horizontal").pack(fill="x", pady=20)
 
-        # CORRECTED: Call self.app.start_full_automation
-        ttk.Button(
-            main_frame,
-            text="Run Full Automation (All Steps)",
-            style="Success.TButton",
-            command=self.app.start_full_automation,  # Corrected line
-        ).pack(pady=10, fill="x", ipady=10)
+        bottom_button_frame = ttk.Frame(main_frame)
+        bottom_button_frame.pack(fill="x", pady=10)
 
         ttk.Button(
-            main_frame,
+            bottom_button_frame,
+            text="Run Full Automation (All Steps)",
+            style="Success.TButton",
+            command=self.app.start_full_automation,
+        ).pack(side="left", expand=True, fill="x", ipady=10, padx=(0, 5))
+
+        ttk.Button(
+            bottom_button_frame,
             text="Stop Automation",
             style="Danger.TButton",
             command=self.app.stop_automation,
-        ).pack(pady=10, fill="x", ipady=10)
+        ).pack(side="left", expand=True, fill="x", ipady=10, padx=(5, 0))
 
-        # --- Log Area ---
         log_frame = ttk.LabelFrame(main_frame, text="Automation Log", padding=10)
-        log_frame.pack(fill="both", expand=True, pady=10)
+        log_frame.pack(fill="both", expand=True, pady=(10, 0))
 
         self.log_area = scrolledtext.ScrolledText(
             log_frame, wrap="word", height=10, state="disabled", font=("Consolas", 9)
@@ -200,8 +214,8 @@ class AutomationTab:
     def run_automation_phase1_only(self):
         self.start_automation_thread(
             self.app.automation_instance.run_phase_1,
-            "Starting Phase 1: Maklumat Am...",  # New start message
-            "Phase 1 completed successfully.",  # New success message
+            "Starting Phase 1: Maklumat Am...",
+            "Phase 1 completed successfully.",
         )
 
     def run_automation_phase2_only(self):
@@ -210,29 +224,91 @@ class AutomationTab:
         if company_data and insurance_data:
             self.start_automation_thread(
                 self.app.automation_instance.run_phase_2_bahagian_a,
-                "Starting Phase 2: Bahagian A...",  # New start message
-                "Phase 2 completed successfully.",  # New success message
+                "Starting Phase 2: Bahagian A...",
+                "Phase 2 completed successfully.",
                 company_data,
                 insurance_data,
             )
 
     def run_automation_phase3_only(self):
-        self.start_automation_thread(
-            self.app.automation_instance.run_phase_3_bahagian_b,
-            "Starting Phase 3: Bahagian B...",  # New start message
-            "Phase 3 completed successfully.",  # New success message
-        )
+        if not self.app.automation_instance:
+            messagebox.showerror(
+                "Error", "Chrome is not prepared. Please connect first."
+            )
+            return
+
+        threading.Thread(target=self._threaded_phase3_runner, daemon=True).start()
+
+    def _threaded_phase3_runner(self):
+        self.log_message("Starting Phase 3: Lampiran...")
+        self.app.update_status("Running Phase 3...", "#17a2b8")
+
+        try:
+            company_data = self.get_company_data_from_form()
+            source_pdf = self.app.uploaded_pdf_path
+            unique_id = self.app.adjudikasi_id.get()
+            old_roc = company_data.get("old_roc") if company_data else None
+            new_roc = company_data.get("new_roc") if company_data else None
+
+            if not all([company_data, source_pdf, unique_id, old_roc, new_roc]):
+                error_msg = "Please ensure a Source PDF is uploaded and the Adjudication Number, Old ROC, and New ROC fields are all filled."
+                self.log_message(f"ERROR: {error_msg}")
+                self.app.after(
+                    0, messagebox.showerror, "Missing Information", error_msg
+                )
+                return
+
+            self.log_message("Creating Labeled PDF...")
+            roc_text = f"{new_roc}/{old_roc}"
+            pdf_filename = os.path.basename(source_pdf)
+            output_folder = self.app.export_dir_var.get()
+            labeled_pdf_path = os.path.join(output_folder, pdf_filename)
+            os.makedirs(output_folder, exist_ok=True)
+
+            if not pdf_processor.add_labels_to_pdf(
+                source_pdf, labeled_pdf_path, unique_id, roc_text
+            ):
+                self.log_message("ERROR: Failed to create labeled PDF.")
+                self.app.after(
+                    0, messagebox.showerror, "Error", "Failed to create labeled PDF."
+                )
+                return
+
+            self.log_message(f"Labeled PDF created at: {labeled_pdf_path}")
+
+            self.app.automation_instance.run_phase_3_lampiran(labeled_pdf_path)
+            self.log_message("SUCCESS: Phase 3 completed successfully.")
+            self.app.after(
+                0, messagebox.showinfo, "Success", "Phase 3 completed successfully."
+            )
+
+        except Exception as e:
+            self._handle_error(e)  # Use the centralized error handler
+        finally:
+            if self.app.driver and self.app.automation_instance:
+                self.app.after(
+                    0, self.app.update_status, "● Connected to Chrome", "#28a745"
+                )
+            else:
+                self.app.after(0, self.app.update_status, "● Disconnected", "#6c757d")
+            self.app.stop_event.clear()
 
     def run_automation_phase4_only(self):
-        messagebox.showinfo(
-            "Info", "Phase 4 can only be run as part of the 'Full Automation' process."
-        )
+        company_name = self.app.company_name.get()
+        policy_number = self.app.policy_number.get()
+        if not all([company_name, policy_number]):
+            messagebox.showerror(
+                "Missing Information",
+                "Please ensure Company Name and Policy Number are filled.",
+            )
+            return
 
-    def run_automation_phase5_only(self):
+        reference_text = f"{company_name} {policy_number}"
         self.start_automation_thread(
-            self.app.automation_instance.run_phase_5_perakuan,
-            "Starting Phase 5: Perakuan...",  # New start message
-            "Phase 5 completed successfully.",  # New success message
+            self.app.automation_instance.run_phase_4_perakuan,
+            "Starting Phase 4: Perakuan...",
+            "Phase 4 completed successfully.",
+            reference_text,
         )
 
     def _threaded_full_automation(self):
@@ -257,7 +333,10 @@ class AutomationTab:
             self.app.update_status("Running Phase 1...", "#17a2b8")
             self.log_message("Running Phase 1: Maklumat Am...")
             id_result = self.app.automation_instance.run_phase_1()
-            self.app.adjudikasi_id.set(id_result)
+
+            if id_result:
+                self.app.after(0, self.app.adjudikasi_id.set, id_result)
+
             self.app.automation_instance._check_stop_signal()
             self.log_message(f"Phase 1 completed. Adjudikasi ID: {id_result}")
 
@@ -293,15 +372,6 @@ class AutomationTab:
 
             self.app.update_status("Running Phase 2...", "#17a2b8")
             self.log_message("Running Phase 2: Bahagian A...")
-            company_data["business_type"] = company_data.get("business_type", "4")
-            company_data["other_numeric_field"] = company_data.get(
-                "other_numeric_field", ""
-            )
-            insurance_data["business_type"] = insurance_data.get("business_type", "5")
-            insurance_data["other_numeric_field"] = insurance_data.get(
-                "other_numeric_field", ""
-            )
-
             self.app.automation_instance.run_phase_2_bahagian_a(
                 company_data, insurance_data
             )
@@ -309,28 +379,26 @@ class AutomationTab:
             self.log_message("Phase 2 completed.")
 
             self.app.update_status("Running Phase 3...", "#17a2b8")
-            self.log_message("Running Phase 3: Bahagian B...")
-            self.app.automation_instance.run_phase_3_bahagian_b()
+            self.log_message("Running Phase 3: Lampiran...")
+            self.app.automation_instance.run_phase_3_lampiran(labeled_pdf_path)
             self.app.automation_instance._check_stop_signal()
             self.log_message("Phase 3 completed.")
 
             self.app.update_status("Running Phase 4...", "#17a2b8")
-            self.log_message("Running Phase 4: Lampiran...")
-            self.app.automation_instance.run_phase_4_lampiran(labeled_pdf_path)
+            self.log_message("Running Phase 4: Perakuan...")
+            company_name = company_data.get("name", "")
+            policy_number = self.app.policy_number.get()
+            reference_text = f"{company_name} {policy_number}"
+            self.app.automation_instance.run_phase_4_perakuan(reference_text)
             self.app.automation_instance._check_stop_signal()
             self.log_message("Phase 4 completed.")
 
-            self.app.update_status("Running Phase 5...", "#17a2b8")
-            self.log_message("Running Phase 5: Perakuan...")
-            self.app.automation_instance.run_phase_5_perakuan()
-            self.app.automation_instance._check_stop_signal()
-            self.log_message("Phase 5 completed.")
-
+            success_message = "Full automation completed successfully!\n\nPlease check if the data have been auto inserted correctly."
             self.app.after(
                 0,
                 messagebox.showinfo,
                 "Success",
-                "Full automation completed successfully!",
+                success_message,
             )
             self.log_message("SUCCESS: Full automation completed!")
 
@@ -338,7 +406,6 @@ class AutomationTab:
             self.log_message(
                 "WARNING: Full automation process was stopped by the user."
             )
-            # Do NOT print to console here, let log_message handle it
             self.app.after(
                 0,
                 messagebox.showwarning,
@@ -346,10 +413,7 @@ class AutomationTab:
                 "The full automation process was stopped by the user.",
             )
         except Exception as e:
-            error_message = f"An error occurred during full automation: {str(e)}"
-            self.log_message(f"ERROR: {error_message}")
-            # Do NOT print to console here, let log_message handle it
-            self.app.after(0, messagebox.showerror, "Automation Error", error_message)
+            self._handle_error(e)  # Use the centralized error handler
         finally:
             if (
                 self.app.driver

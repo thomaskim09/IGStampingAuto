@@ -17,7 +17,7 @@ class StampsAutomation:
         Initializes the automation class with a Selenium WebDriver instance.
         """
         self.driver = driver
-        self.wait = WebDriverWait(self.driver, 5)  # 5-second wait timeout
+        self.wait = WebDriverWait(self.driver, 5)  # Increased timeout to 5 seconds
         self.stop_event = stop_event
         self.log_callback = (
             log_callback if log_callback else print
@@ -82,6 +82,14 @@ class StampsAutomation:
             self._log("Simulating TAB press to trigger TIN lookup...")
             old_roc_field.send_keys(Keys.TAB)
 
+            # --- Fill the New ROC field ---
+            new_roc_field = self.driver.find_element(By.NAME, "tb_roc_new")
+            new_roc_field.send_keys(party_data.get("new_roc", ""))
+
+            # This triggers the onchange/onblur event and starts the TIN lookup.
+            self._log("Simulating TAB press to trigger TIN lookup...")
+            new_roc_field.send_keys(Keys.TAB)
+
             # --- Now, wait for the TIN lookup to complete ---
             self._log("Waiting for the TIN lookup to complete...")
             nota_locator = (
@@ -93,9 +101,6 @@ class StampsAutomation:
 
             # --- Now that the modal is stable, fill the REMAINING fields ---
             self._log("Proceeding to fill remaining fields...")
-            self.driver.find_element(By.NAME, "tb_roc_new").send_keys(
-                party_data.get("new_roc", "")
-            )
             self.driver.find_element(By.NAME, "tb_alamat_1").send_keys(
                 party_data.get("address_1", "")
             )
@@ -158,38 +163,45 @@ class StampsAutomation:
         self._log("--- Running Phase 1: Maklumat Am ---")
         try:
             self.wait.until(
-                EC.element_to_be_clickable((By.LINK_TEXT, "Permohonan Baru"))
+                EC.element_to_be_clickable((By.XPATH, "//a[@href='#bhgn-am']"))
             ).click()
-            self._check_stop_signal()
-            self._log("Clicked 'Permohonan Baru'.")
+            self._log("Switched to 'Maklumat Am' tab.")
 
-            instrument_dropdown = self.wait.until(
-                EC.visibility_of_element_located((By.ID, "id_kod_instrumen"))
+            nama_perjanjian_input = self.wait.until(
+                EC.element_to_be_clickable((By.ID, "namaperjanjian"))
             )
-            Select(instrument_dropdown).select_by_value("0028/0029")
-            self._check_stop_signal()
-            self._log("Selected 'BON JAMINAN/PERJANJIAN INDEMNITI'.")
+            # Clear the field before typing
+            nama_perjanjian_input.clear()
+            nama_perjanjian_input.send_keys("Insurance Guarantee")
+            self._log("Cleared and typed 'Insurance Guarantee' into the search field.")
 
-            jenis_instrument_dropdown = self.wait.until(
-                EC.visibility_of_element_located((By.ID, "id_kod_jenis_instrumen"))
+            autocomplete_option = self.wait.until(
+                EC.element_to_be_clickable(
+                    (
+                        By.XPATH,
+                        "//div[@id='namaperjanjianautocomplete-list']/div[normalize-space()='Insurance Guarantee']",
+                    )
+                )
             )
-            Select(jenis_instrument_dropdown).select_by_visible_text("Bon Jaminan Am")
-            self._check_stop_signal()
-            self._log("Selected 'Bon Jaminan Am'.")
+            autocomplete_option.click()
+            self._log("Selected 'Insurance Guarantee' from autocomplete.")
 
+            self._log("Verifying 'Surat Jaminan' auto-population...")
             self.wait.until(
-                EC.element_to_be_clickable((By.NAME, "btn_seterusnya"))
-            ).click()
-            self._check_stop_signal()
-            self._log("Clicked 'Seterusnya' button.")
+                EC.text_to_be_present_in_element_value(
+                    (By.ID, "profile_desc"), "Surat Jaminan"
+                )
+            )
+            self._log("'profile_desc' field correctly populated with 'Surat Jaminan'.")
 
             adjudikasi_element = self.wait.until(
-                EC.visibility_of_element_located((By.ID, "adjudikasi"))
+                EC.visibility_of_element_located((By.ID, "pds_view"))
             )
             adjudikasi_id = adjudikasi_element.text
             self._check_stop_signal()
             self._log(f"Successfully fetched Nombor Adjudikasi: {adjudikasi_id}")
             return adjudikasi_id
+
         except InterruptedError:
             self._log("Automation interrupted by user in Phase 1.")
             raise
@@ -259,53 +271,87 @@ class StampsAutomation:
                 self._log(f"ERROR: Error switching back to default content: {se}")
             raise
 
-    def run_phase_3_bahagian_b(self):
+    def run_phase_3_lampiran(self, path_to_labeled_pdf):
         self._check_stop_signal()
-        self._log("--- Running Phase 3: Bahagian B ---")
+        self._log("--- Running Phase 3: Lampiran ---")
         try:
-            # time.sleep(2) # Simulate work
+            # Step 1: Click the tab to make the Lampiran section visible
+            self.wait.until(
+                EC.element_to_be_clickable((By.XPATH, "//a[@href='#bhgn-attach']"))
+            ).click()
+            self._log("SUCCESS: Clicked 'Lampiran' tab.")
             self._check_stop_signal()
-            self._log("Phase 3 completed (placeholder).")
+
+            # Step 2: Switch context into the iframe that contains the file upload element
+            self.wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, "if-64")))
+            self._log("SUCCESS: Switched into iframe 'if-64'.")
+
+            # Step 3: Inside the iframe, find the input element and send the file path
+            file_input = self.wait.until(
+                EC.presence_of_element_located((By.ID, "file64"))
+            )
+            file_input.send_keys(path_to_labeled_pdf)
+            self._log(f"SUCCESS: Sent PDF path to file input: {path_to_labeled_pdf}")
+            self._check_stop_signal()
+
+            # Step 4: Wait for the "Muatnaik berjaya." success message to appear
+            self._log("Waiting for 'Muatnaik berjaya.' success message...")
+            self.wait.until(
+                EC.visibility_of_element_located(
+                    (
+                        By.XPATH,
+                        "//td[@id='up_progress64']/span[contains(text(), 'Muatnaik berjaya')]",
+                    )
+                )
+            )
+            self._log("SUCCESS: Upload success message is visible.")
+
+            # Step 5: IMPORTANT - Switch back to the main page's context
+            self.driver.switch_to.default_content()
+            self._log("SUCCESS: Switched back to main page.")
+
         except InterruptedError:
             self._log("Automation interrupted by user in Phase 3.")
             raise
+        except Exception as e:
+            self._log(
+                f"ERROR: An error occurred in Phase 3. The process failed after the last 'SUCCESS' message. Error details: {e}"
+            )
+            raise
 
-    def run_phase_4_lampiran(self, path_to_labeled_pdf):
+    def run_phase_4_perakuan(self, reference_text):
         self._check_stop_signal()
-        self._log("--- Running Phase 4: Lampiran ---")
+        self._log("--- Running Phase 4: Perakuan ---")
         try:
+            # Switch to the 'Perakuan' tab
             self.wait.until(
-                EC.element_to_be_clickable((By.XPATH, "//a[@href='#lampiran']"))
+                EC.element_to_be_clickable((By.XPATH, "//a[@href='#bhgn-perakuan']"))
             ).click()
             self._check_stop_signal()
-            self._log("Switched to Lampiran tab.")
+            self._log("Switched to Perakuan tab.")
 
-            file_input = self.wait.until(
-                EC.presence_of_element_located((By.ID, "fail_lampiran"))
+            # Find the reference input field
+            ref_input = self.wait.until(
+                EC.visibility_of_element_located((By.NAME, "pds_refno"))
             )
-            file_input.send_keys(path_to_labeled_pdf)
-            self._check_stop_signal()
-            self._log(
-                f"Successfully sent PDF path to file input: {path_to_labeled_pdf}"
-            )
+            # Clear the field before typing
+            ref_input.clear()
+            ref_input.send_keys(reference_text)
+            self._log(f"Cleared and inserted reference text: {reference_text}")
 
-            self.wait.until(EC.element_to_be_clickable((By.ID, "btn_lampiran"))).click()
-            self._check_stop_signal()
-            self._log("Clicked 'Muatnaik' (Upload) button.")
+            # Find and check the checkbox
+            checkbox = self.wait.until(
+                EC.presence_of_element_located((By.ID, "pds_akuan"))
+            )
+            if not checkbox.is_selected():
+                checkbox.click()
+                self._log("Clicked the confirmation checkbox.")
+            else:
+                self._log("Confirmation checkbox was already checked.")
+
         except InterruptedError:
             self._log("Automation interrupted by user in Phase 4.")
             raise
         except Exception as e:
             self._log(f"ERROR: An error occurred in Phase 4: {e}")
-            raise
-
-    def run_phase_5_perakuan(self):
-        self._check_stop_signal()
-        self._log("--- Running Phase 5: Perakuan ---")
-        try:
-            # time.sleep(2) # Simulate work
-            self._check_stop_signal()
-            self._log("Phase 5 completed (placeholder).")
-        except InterruptedError:
-            self._log("Automation interrupted by user in Phase 5.")
             raise

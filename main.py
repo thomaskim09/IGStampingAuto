@@ -7,6 +7,7 @@ import threading
 import socket
 import time
 from selenium import webdriver
+from PIL import ImageTk
 
 # Local module imports
 import database
@@ -20,19 +21,46 @@ class IGStampingAuto(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("IG Stamping Automation")
-        self.geometry("800x725")  # Increased height for the status bar
+
+        # --- Set Application Icon ---
+        try:
+            # Assumes your icon is named 'app_icon.png' and is in the 'resource' folder
+            icon_path = os.path.join("resource", "app_icon.png")
+            if os.path.exists(icon_path):
+                photo = ImageTk.PhotoImage(file=icon_path)
+                self.iconphoto(False, photo)
+            else:
+                print(
+                    "Warning: Icon file not found at 'resource/app_icon.png', using default icon."
+                )
+        except Exception as e:
+            print(f"Error setting application icon: {e}")
+
+        # --- Fix for Perfect Window Centering ---
+        window_width = 800
+        window_height = 760
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+
+        # Calculate x and y coordinates for the center
+        x_coordinate = (screen_width // 2) - (window_width // 2)
+        y_coordinate = (screen_height // 2) - (window_height // 2)
+
+        # Set geometry (width x height + x_offset + y_offset) in one go
+        self.geometry(f"{window_width}x{window_height}+{x_coordinate}+{y_coordinate}")
 
         # --- Core Application State Variables ---
         self.driver = None
         self.automation_instance = None
         self.adjudikasi_id = tk.StringVar()
+        self.policy_number = tk.StringVar()
         self.output_dir_path = os.path.join(os.getcwd(), "output_stamped")
         os.makedirs(self.output_dir_path, exist_ok=True)
         self.uploaded_pdf_path = None
         self.all_company_names = []
         self.all_insurance_names = []
-        self.stop_event = threading.Event()  # Initialize the stop event
-        self.log_callback = None  # Will be set by AutomationTab
+        self.stop_event = threading.Event()
+        self.log_callback = None
 
         # --- Tkinter UI Variables ---
         self.company_search_var = tk.StringVar()
@@ -85,7 +113,6 @@ class IGStampingAuto(tk.Tk):
 
         # --- UI Initialization ---
         self.create_main_widgets()
-        # Set the log_callback AFTER automation_tab_ui is initialized
         self.log_callback = self.automation_tab_ui.log_message
         self.load_company_names_to_search()
         self.load_insurance_names_to_search()
@@ -107,16 +134,14 @@ class IGStampingAuto(tk.Tk):
         connects with Selenium, updating the UI based on the result.
         """
         if is_retrying:
-            time.sleep(2)  # Give Chrome a moment to start up after launch
+            time.sleep(2)
 
-        # Fast check using a socket to see if the port is open
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(1)  # Short timeout of 1 second
+        sock.settimeout(1)
         result = sock.connect_ex(("127.0.0.1", 9222))
         sock.close()
 
         if result == 0:
-            # Port is open, now try to connect with Selenium
             try:
                 chrome_options = webdriver.ChromeOptions()
                 chrome_options.add_experimental_option(
@@ -125,20 +150,13 @@ class IGStampingAuto(tk.Tk):
                 driver = webdriver.Chrome(options=chrome_options)
                 _ = driver.window_handles
                 self.driver = driver
-                # Pass log_callback to StampsAutomation
                 self.automation_instance = StampsAutomation(
                     self.driver, self.stop_event, self.log_callback
                 )
-                print(
-                    "Successfully connected to existing Chrome instance."
-                )  # This print will still go to console
                 self.after(0, self.update_status, "● Connected to Chrome", "#28a745")
-            except Exception as e:
+            except Exception:
                 self.driver = None
                 self.automation_instance = None
-                print(
-                    f"Port 9222 is open, but connection failed: {e}"
-                )  # This print will still go to console
                 self.after(
                     0,
                     self.update_status,
@@ -146,13 +164,9 @@ class IGStampingAuto(tk.Tk):
                     "#ffc107",
                 )
         else:
-            # Port is not open
             self.driver = None
             self.automation_instance = None
             if not is_retrying:
-                print(
-                    "No active Chrome instance found."
-                )  # This print will still go to console
                 self.after(
                     0,
                     self.update_status,
@@ -163,7 +177,6 @@ class IGStampingAuto(tk.Tk):
     def attempt_reconnect_to_chrome(self, is_retrying=False):
         """
         Starts the connection check in a separate thread to keep the UI responsive.
-        The 'is_retrying' flag prevents certain messages from appearing after a launch attempt.
         """
         if not is_retrying:
             self.update_status("Checking for Chrome...", "#ffc107")
@@ -175,7 +188,6 @@ class IGStampingAuto(tk.Tk):
 
     def create_main_widgets(self):
         """Creates the main notebook, tabs, and status bar."""
-        # Status Bar
         self.status_var = tk.StringVar()
         status_frame = tk.Frame(self, bg="#6c757d")
         status_frame.pack(side=tk.BOTTOM, fill=tk.X)
@@ -190,7 +202,6 @@ class IGStampingAuto(tk.Tk):
         )
         self.status_label.pack(fill=tk.X)
 
-        # Notebook
         self.notebook = ttk.Notebook(self)
         self.notebook.pack(pady=10, padx=10, expand=True, fill="both")
 
@@ -204,16 +215,15 @@ class IGStampingAuto(tk.Tk):
 
         self.company_tab_ui = CompanyTab(company_tab_frame, self)
         self.insurance_tab_ui = InsuranceTab(insurance_tab_frame, self)
-        self.automation_tab_ui = AutomationTab(
-            automation_tab_frame, self
-        )  # Ensure this is initialized before log_callback is set
+        self.automation_tab_ui = AutomationTab(automation_tab_frame, self)
 
     def start_full_automation(self):
         """A central method to start the automation, called from any tab."""
-        # Before starting, clear any previous stop signals
         self.stop_event.clear()
         if hasattr(self, "automation_tab_ui") and self.automation_tab_ui:
-            self.automation_tab_ui.start_full_automation()
+            threading.Thread(
+                target=self.automation_tab_ui._threaded_full_automation, daemon=True
+            ).start()
         else:
             messagebox.showerror("Error", "Automation components are not ready.")
 
@@ -223,13 +233,13 @@ class IGStampingAuto(tk.Tk):
             "Stop Automation",
             "Are you sure you want to stop the current automation process?",
         ):
-            self.stop_event.set()  # Set the event to signal the thread to stop
-            self.update_status("Stopping automation...", "#ffc107")  # Yellow
-            if self.log_callback:  # Log to UI if callback is available
+            self.stop_event.set()
+            self.update_status("Stopping automation...", "#ffc107")
+            if self.log_callback:
                 self.log_callback("User requested to stop automation.")
             self.update_status(
                 "● Automation stop signal sent. Chrome remains open.", "#6c757d"
-            )  # Grey
+            )
 
     def load_company_names_to_search(self):
         self.all_company_names = database.get_all_company_names()

@@ -4,7 +4,7 @@ import re
 
 def extract_info_from_pdf(pdf_path):
     """
-    Extracts company name and address from the PDF based on the document's paragraph structure.
+    Extracts company name, address, and policy number from the PDF.
     """
     extracted_data = {}
     try:
@@ -20,8 +20,6 @@ def extract_info_from_pdf(pdf_path):
             r"As requested by of (.*?), of", full_text, re.IGNORECASE
         )
         if name_match:
-            # The company name might have "SDN. BHD." appended on the next line
-            # From the source, we see "MEGATILES BUILDER SDN. BHD." is consistent
             extracted_data["name"] = name_match.group(1).strip() + " SDN. BHD."
 
         # Pattern 2: Find the address between ", of" and "we, Zurich"
@@ -30,6 +28,13 @@ def extract_info_from_pdf(pdf_path):
         )
         if address_match:
             extracted_data["address"] = address_match.group(1).strip()
+
+        # New Pattern 3: Find the Policy Number
+        policy_match = re.search(
+            r"RE: OUR REFERENCE GUARANTEE NO:\s*([\d\*-]+)", full_text, re.IGNORECASE
+        )
+        if policy_match:
+            extracted_data["policy_number"] = policy_match.group(1).strip()
 
         doc.close()
         return extracted_data
@@ -60,7 +65,6 @@ def add_labels_to_pdf(source_path, output_path, unique_id, roc_text):
         text_color = (0, 0, 0)  # Black color
 
         # Position for Top Right Text (ROC)
-        # We calculate the width of the text to align it properly from the right
         roc_text_len = fitz.get_text_length(
             roc_text, fontname="helv", fontsize=font_size
         )
