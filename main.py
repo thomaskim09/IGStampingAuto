@@ -1,3 +1,5 @@
+# IGStampingAuto/main.py
+
 import tkinter as tk
 from tkinter import ttk, messagebox
 import os
@@ -14,13 +16,13 @@ from automation import StampsAutomation
 from ui_company_tab import CompanyTab
 from ui_insurance_tab import InsuranceTab
 from ui_automation_tab import AutomationTab
+from ui_advanced_tab import AdvancedTab
 
 
 # --- Helper function to find data files ---
 def resource_path(relative_path):
     """Get absolute path to resource, works for dev and for PyInstaller"""
     try:
-        # PyInstaller creates a temp folder and stores path in _MEIPASS
         base_path = sys._MEIPASS
     except Exception:
         base_path = os.path.abspath(".")
@@ -32,28 +34,20 @@ class IGStampingAuto(tk.Tk):
         super().__init__()
         self.title("IG Stamping Automation")
 
-        # --- Set Application Icon ---
         try:
             icon_path = resource_path(os.path.join("resource", "app_icon.png"))
             if os.path.exists(icon_path):
                 photo = ImageTk.PhotoImage(file=icon_path)
                 self.iconphoto(False, photo)
-            else:
-                print("Warning: Icon file not found.")
         except Exception as e:
             print(f"Error setting application icon: {e}")
 
-        # --- Perfect Window Centering ---
         window_width = 800
         window_height = 760
         screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()
-
-        # Calculate x and y coordinates for the center
         x_coordinate = (screen_width // 2) - (window_width // 2)
         y_coordinate = (screen_height // 2) - (window_height // 2)
-
-        # Set geometry (width x height + x_offset + y_offset) in one go
         self.geometry(f"{window_width}x{window_height}+{x_coordinate}+{y_coordinate}")
 
         # --- Core Application State Variables ---
@@ -68,6 +62,7 @@ class IGStampingAuto(tk.Tk):
         self.all_insurance_names = []
         self.stop_event = threading.Event()
         self.log_callback = None
+        self.chrome_executable_path = ""
 
         # --- Tkinter UI Variables ---
         self.company_search_var = tk.StringVar()
@@ -95,7 +90,6 @@ class IGStampingAuto(tk.Tk):
         self.insurance_postcode = tk.StringVar()
         self.insurance_state = tk.StringVar()
 
-        # --- Style Configuration ---
         style = ttk.Style(self)
         style.theme_use("clam")
         style.configure(
@@ -111,35 +105,26 @@ class IGStampingAuto(tk.Tk):
             bordercolor="#f5c6cb",
         )
 
-        # --- Database Setup ---
         database.create_tables()
         if database.is_company_table_empty():
             database.preload_initial_companies()
         if database.is_insurance_table_empty():
             database.preload_initial_insurance()
 
-        # --- UI Initialization ---
         self.create_main_widgets()
         self.log_callback = self.automation_tab_ui.log_message
         self.load_company_names_to_search()
         self.load_insurance_names_to_search()
         self.auto_populate_default_insurance()
-
-        # --- Start the non-blocking check on startup ---
         self.attempt_reconnect_to_chrome()
 
     def update_status(self, text, color):
-        """Thread-safe method to update the status bar."""
         status_frame = self.status_label.master
         status_frame.config(bg=color)
         self.status_label.config(background=color, foreground="white")
         self.status_var.set(text)
 
     def _threaded_chrome_check(self, is_retrying=False):
-        """
-        Runs in a background thread. Uses a fast socket check and then
-        connects with Selenium, updating the UI based on the result.
-        """
         if is_retrying:
             time.sleep(2)
 
@@ -182,12 +167,8 @@ class IGStampingAuto(tk.Tk):
                 )
 
     def attempt_reconnect_to_chrome(self, is_retrying=False):
-        """
-        Starts the connection check in a separate thread to keep the UI responsive.
-        """
         if not is_retrying:
             self.update_status("Checking for Chrome...", "#ffc107")
-
         thread = threading.Thread(
             target=self._threaded_chrome_check, args=(is_retrying,), daemon=True
         )
@@ -215,17 +196,19 @@ class IGStampingAuto(tk.Tk):
         company_tab_frame = ttk.Frame(self.notebook)
         insurance_tab_frame = ttk.Frame(self.notebook)
         automation_tab_frame = ttk.Frame(self.notebook)
+        advanced_tab_frame = ttk.Frame(self.notebook)
 
         self.notebook.add(company_tab_frame, text="Company Information")
         self.notebook.add(insurance_tab_frame, text="Insurance Company Information")
         self.notebook.add(automation_tab_frame, text="Automation Steps")
+        self.notebook.add(advanced_tab_frame, text="Advanced")
 
         self.company_tab_ui = CompanyTab(company_tab_frame, self)
         self.insurance_tab_ui = InsuranceTab(insurance_tab_frame, self)
         self.automation_tab_ui = AutomationTab(automation_tab_frame, self)
+        self.advanced_tab_ui = AdvancedTab(advanced_tab_frame, self)
 
     def start_full_automation(self):
-        """A central method to start the automation, called from any tab."""
         self.stop_event.clear()
         if hasattr(self, "automation_tab_ui") and self.automation_tab_ui:
             threading.Thread(
@@ -235,7 +218,6 @@ class IGStampingAuto(tk.Tk):
             messagebox.showerror("Error", "Automation components are not ready.")
 
     def stop_automation(self):
-        """Method to set the stop event and signal the automation thread to stop."""
         if messagebox.askyesno(
             "Stop Automation",
             "Are you sure you want to stop the current automation process?",

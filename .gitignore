@@ -4,6 +4,9 @@ venv/
 # Database file
 data.db
 
+# Config file
+config.json
+
 # Executable files
 chromedriver.exe
 

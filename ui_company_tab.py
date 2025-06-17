@@ -175,12 +175,36 @@ class CompanyTab:
         ttk.Entry(form_frame, textvariable=self.app.company_city).grid(
             row=5, column=1, sticky="ew", padx=5, pady=5
         )
+
         ttk.Label(form_frame, text="State:").grid(
             row=6, column=0, sticky="w", padx=5, pady=5
         )
-        ttk.Entry(form_frame, textvariable=self.app.company_state).grid(
-            row=6, column=1, sticky="ew", padx=5, pady=5
+        malaysia_states = [
+            "Johor",
+            "Kedah",
+            "Kelantan",
+            "Melaka",
+            "Negeri Sembilan",
+            "Pahang",
+            "Penang",
+            "Perak",
+            "Perlis",
+            "Sabah",
+            "Sarawak",
+            "Selangor",
+            "Terengganu",
+            "W.P. Kuala Lumpur",
+            "W.P. Labuan",
+            "W.P. Putrajaya",
+        ]
+        state_combo = ttk.Combobox(
+            form_frame,
+            textvariable=self.app.company_state,
+            values=malaysia_states,
+            state="normal",
         )
+        state_combo.grid(row=6, column=1, sticky="ew", padx=5, pady=5)
+
         ttk.Label(form_frame, text="Old ROC Number:").grid(
             row=7, column=0, sticky="w", padx=5, pady=5
         )
@@ -252,7 +276,6 @@ class CompanyTab:
             self.app.after(
                 0, self.app.update_status, "● Connected to Chrome", "#28a745"
             )
-            # Always show the popup, even if successfully connected.
             self.app.after(0, self.show_startup_info_popup)
             return
         except Exception:
@@ -262,10 +285,39 @@ class CompanyTab:
                 "No instance found. Launching Chrome...",
                 "#17a2b8",
             )
+
+        possible_paths = [
+            self.app.chrome_executable_path,
+            "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+            "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+            os.path.expanduser(
+                "~\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe"
+            ),
+        ]
+
+        found_path = next(
+            (path for path in possible_paths if path and os.path.exists(path)), None
+        )
+
+        if not found_path:
+            self.app.after(
+                0,
+                self.app.update_status,
+                "● Disconnected. Chrome not found.",
+                "#dc3545",
+            )
+            self.app.after(
+                0,
+                messagebox.showerror,
+                "Error",
+                "Could not find 'chrome.exe'. Please set the correct path in the 'Advanced' tab.",
+            )
+            return
+
         profile_path = os.path.join(os.getcwd(), "chrome_profile")
         target_website = "https://stamps.hasil.gov.my/stamps/"
         command = [
-            "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+            found_path,
             "--remote-debugging-port=9222",
             f"--user-data-dir={profile_path}",
             target_website,
@@ -274,16 +326,6 @@ class CompanyTab:
             subprocess.Popen(command)
             self.app.after(0, self.show_startup_info_popup)
             self.app.attempt_reconnect_to_chrome(is_retrying=True)
-        except FileNotFoundError:
-            self.app.after(
-                0,
-                self.app.update_status,
-                "● Disconnected. Chrome not found.",
-                "#dc3545",
-            )
-            self.app.after(
-                0, messagebox.showerror, "Error", "Could not find 'chrome.exe'."
-            )
         except Exception as e:
             self.app.after(
                 0,
@@ -323,7 +365,6 @@ class CompanyTab:
             )
 
         self.popup_widgets["text_label"].config(text=step_info["text"])
-
         self.popup_widgets["prev_button"].config(
             state="normal" if self.current_step > 0 else "disabled"
         )
@@ -348,7 +389,6 @@ class CompanyTab:
         ]
         self.current_step = 0
 
-        # Check if a popup from a previous click is still open
         if (
             self.popup_widgets
             and self.popup_widgets.get("window")
@@ -371,15 +411,12 @@ class CompanyTab:
 
         img_label = ttk.Label(popup)
         img_label.pack(pady=10)
-
         text_label = ttk.Label(
             popup, wraplength=780, justify="center", font=("Segoe UI", 10)
         )
         text_label.pack(pady=10, padx=10, fill="x")
-
         separator = ttk.Separator(popup, orient="horizontal")
         separator.pack(fill="x", padx=20, pady=5)
-
         button_frame = ttk.Frame(popup, padding=10)
         button_frame.pack(fill="x", side="bottom")
 
@@ -393,24 +430,50 @@ class CompanyTab:
         prev_button.pack(side="left", padx=10)
 
         self.popup_widgets = {
-            "window": popup,  # Keep a reference to the window itself
+            "window": popup,
             "img_label": img_label,
             "text_label": text_label,
             "prev_button": prev_button,
             "next_button": next_button,
             "ok_button": ok_button,
         }
-
         self._update_step_view()
 
     def on_company_search_type(self, event):
-        typed_text = self.app.company_search_var.get().lower()
-        filtered_list = [
-            name
-            for name in self.app.all_company_names
-            if name.lower().startswith(typed_text)
-        ]
-        self.company_combo["values"] = filtered_list
+        """Filters the dropdown and opens it without losing focus from the text field."""
+        # Ignore control keys like Shift, Ctrl, Alt, etc.
+        if event.keysym in (
+            "Shift_L",
+            "Shift_R",
+            "Control_L",
+            "Control_R",
+            "Alt_L",
+            "Alt_R",
+            "Tab",
+        ):
+            return
+
+        combobox = event.widget
+        current_text = combobox.get()
+
+        # Filter the list of names
+        if current_text:
+            filtered_list = [
+                name
+                for name in self.app.all_company_names
+                if current_text.lower() in name.lower()
+            ]
+            combobox["values"] = filtered_list
+        else:
+            # If the field is empty, show all names and close the dropdown
+            combobox["values"] = self.app.all_company_names
+            combobox.event_generate("<FocusOut>")
+            return
+
+        # If there are results, open the dropdown
+        if filtered_list:
+            combobox.event_generate("<Down>")
+            combobox.focus()
 
     def clear_company_form(self):
         self.app.company_search_var.set("")
