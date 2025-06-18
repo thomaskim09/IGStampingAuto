@@ -201,7 +201,7 @@ class CompanyTab:
             form_frame,
             textvariable=self.app.company_state,
             values=malaysia_states,
-            state="normal",
+            state="readonly",
         )
         state_combo.grid(row=6, column=1, sticky="ew", padx=5, pady=5)
 

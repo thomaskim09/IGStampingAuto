@@ -56,7 +56,6 @@ class IGStampingAuto(tk.Tk):
         self.adjudikasi_id = tk.StringVar()
         self.policy_number = tk.StringVar()
         self.output_dir_path = os.path.join(os.getcwd(), "output_stamped")
-        os.makedirs(self.output_dir_path, exist_ok=True)
         self.uploaded_pdf_path = None
         self.all_company_names = []
         self.all_insurance_names = []
